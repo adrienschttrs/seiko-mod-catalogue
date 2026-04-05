@@ -76,6 +76,7 @@ let DEFS = JSON.parse(JSON.stringify(DEFAULT_DEFS));
 let parts = [], editingId=null, addCtx=null, currentImgUrl=null, customCtx=null, uploadingImg=false;
 let activeSection='bracelet', activeBrand=null, activeModel=null, activeView='catalogue';
 let searchQ='', sortBy='name';
+let filterPublish='all', filterPriceMin=0, filterPriceMax=99999, filterStock='all';
 
 // ─── FIRESTORE LISTENERS ──────────────────────────────────────────────────────
 function startListeners() {
@@ -100,6 +101,7 @@ function startListeners() {
 function renderAll() {
   if(activeView==='catalogue') render();
   if(activeView==='settings') renderSettings();
+  if(activeView==='stats') renderStats();
 }
 
 // ─── CLOUDINARY ───────────────────────────────────────────────────────────────
@@ -150,126 +152,6 @@ window.duplicatePart = async function(id) {
   const{id:_,...data}=p;
   await addDoc(collection(db,'parts'),{...data,name:data.name+' (copie)',ts:Date.now()});
   closeModal('detail-modal'); toast('Pièce dupliquée ✓');
-};
-
-// ─── TAOBAO IMPORT ────────────────────────────────────────────────────────────
-const RAPIDAPI_KEY = '6d7f8e9525msh3dbd8becff78157p1d13f8jsn023f0c5d252c';
-
-window.importFromTaobao = async function() {
-  const urlInput = document.getElementById('taobao-url');
-  const status = document.getElementById('taobao-status');
-  const url = urlInput.value.trim();
-  if(!url) { status.textContent = '⚠️ Colle un lien Taobao d\'abord'; status.className='taobao-status err'; return; }
-
-  // Extract item ID from Taobao URL (multiple formats)
-  let itemId = null;
-  const patterns = [
-    /[?&]id=(\d+)/,
-    /item\.taobao\.com\/item\.htm[^?]*\?.*id=(\d+)/,
-    /taobao\.com\/.*\/(\d{10,})/,
-    /\/(\d{10,})\.htm/,
-    /\/(\d{10,})/
-  ];
-  for(const p of patterns) {
-    const m = url.match(p);
-    if(m) { itemId = m[1]; break; }
-  }
-  if(!itemId) { status.textContent = '⚠️ Lien Taobao invalide — copie l\'URL complète depuis le navigateur'; status.className='taobao-status err'; return; }
-
-  status.textContent = '⏳ Récupération des données…'; status.className='taobao-status loading';
-
-  const EUR_RATE = 0.13;
-
-  // Helper: set image in form
-  function setImage(rawUrl) {
-    if(!rawUrl) return false;
-    const imgUrl = rawUrl.startsWith('//') ? 'https:' + rawUrl : rawUrl;
-    currentImgUrl = imgUrl;
-    const prev = document.getElementById('img-prev');
-    const ph = document.getElementById('img-ph');
-    const zone = document.getElementById('img-zone');
-    if(prev) { prev.src = imgUrl; prev.style.display = 'block'; }
-    if(ph) ph.style.display = 'none';
-    if(zone) zone.classList.add('filled');
-    return true;
-  }
-
-  // Helper: set price
-  function setPrice(yuan) {
-    if(!yuan || isNaN(yuan) || yuan <= 0) return false;
-    const eur = (parseFloat(yuan) * EUR_RATE).toFixed(2);
-    const field = document.getElementById('f-buy-price');
-    if(field) { field.value = eur; calcPrice(); }
-    return eur;
-  }
-
-  try {
-    const res = await fetch(`https://taobao-datahub.p.rapidapi.com/item_detail?itemid=${itemId}&country=FR`, {
-      method: 'GET',
-      headers: {
-        'x-rapidapi-host': 'taobao-datahub.p.rapidapi.com',
-        'x-rapidapi-key': RAPIDAPI_KEY
-      }
-    });
-
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    console.log('Taobao API response:', JSON.stringify(data).substring(0, 500));
-
-    // Navigate multiple possible response structures
-    const item = data?.result?.item || data?.item || data?.result || data;
-
-    // Try to find image in various locations
-    const rawImg =
-      item?.pic_url ||
-      item?.main_pic ||
-      item?.picUrl ||
-      item?.main_imgs?.[0] ||
-      item?.item_imgs?.[0]?.url ||
-      item?.images?.[0] ||
-      item?.pics?.[0] ||
-      data?.result?.item_imgs?.[0]?.url ||
-      data?.result?.pic_url;
-
-    // Try to find price in various locations
-    const rawPrice =
-      item?.price ||
-      item?.current_price ||
-      item?.original_price ||
-      item?.sale_price ||
-      item?.priceText ||
-      item?.promotion_price ||
-      data?.result?.price;
-
-    const imgOk = setImage(rawImg);
-    const priceEur = setPrice(rawPrice);
-
-    // Fill supplier link
-    const linkField = document.getElementById('f-link');
-    if(linkField) linkField.value = url;
-
-    if(!imgOk && !priceEur) {
-      status.textContent = '⚠️ API connectée mais données introuvables. Remplis manuellement.';
-      status.className = 'taobao-status err';
-    } else {
-      let msg = '✅ Importé ! ';
-      if(imgOk) msg += 'Photo ✓ ';
-      if(priceEur) msg += `Prix ${priceEur}€ ✓ `;
-      msg += '— Tape le nom toi-même.';
-      status.textContent = msg;
-      status.className = 'taobao-status ok';
-      urlInput.value = '';
-      document.getElementById('f-name')?.focus();
-    }
-
-  } catch(e) {
-    console.error('Taobao import error:', e);
-    // Fallback: at least fill the supplier link
-    const linkField = document.getElementById('f-link');
-    if(linkField) linkField.value = url;
-    status.textContent = '❌ ' + (e.message.includes('HTTP 4') ? 'Clé API invalide ou quota dépassé — vérifie RapidAPI.' : 'Impossible de récupérer les données. Lien fournisseur rempli quand même.');
-    status.className = 'taobao-status err';
-  }
 };
 
 // ─── CALCULATOR ───────────────────────────────────────────────────────────────
@@ -441,7 +323,7 @@ window.setSection  = s=>{activeSection=s;activeBrand=null;activeModel=null;searc
 window.setBrand    = b=>{activeBrand=b;activeModel=null;searchQ='';render();}
 window.setModel    = m=>{activeModel=m;searchQ='';render();}
 window.goBack      = ()=>{if(activeModel)activeModel=null;else if(activeBrand)activeBrand=null;render();}
-window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();
+window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();if(v==='stats')renderStats();
   document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
 }
 
@@ -548,7 +430,39 @@ function renderPartGrid(){
         <button class="btn-gold sm" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Pièce</button>
       </div>
     </div>
+    <div class="quick-filter-bar" id="quick-filter-bar">
+      <div class="qf-group">
+        <span class="qf-lbl">Visibilité</span>
+        <select class="qf-sel" onchange="setFilterPublish(this.value)">
+          <option value="all">Tous</option>
+          <option value="pub">Publiés 🌐</option>
+          <option value="priv">Privés 🔒</option>
+        </select>
+      </div>
+      <div class="qf-group">
+        <span class="qf-lbl">Stock</span>
+        <select class="qf-sel" onchange="setFilterStock(this.value)">
+          <option value="all">Tous</option>
+          <option value="stock">En stock</option>
+          <option value="commande">Commande</option>
+          <option value="rupture">Rupture</option>
+          <option value="vendu">Vendu</option>
+        </select>
+      </div>
+      <div class="qf-group">
+        <span class="qf-lbl">Prix min</span>
+        <input type="range" class="qf-slider" min="0" max="500" step="5" value="0" oninput="setFilterPriceMin(this.value)">
+        <span class="qf-disp" id="qf-price-min-disp">0€</span>
+      </div>
+      <div class="qf-group">
+        <span class="qf-lbl">Prix max</span>
+        <input type="range" class="qf-slider" min="50" max="99999" step="10" value="99999" oninput="setFilterPriceMax(this.value)">
+        <span class="qf-disp" id="qf-price-max-disp">Max</span>
+      </div>
+    </div>
     <div id="grid-results"></div>`;
+  // Reset filters when entering part grid
+  filterPublish='all'; filterStock='all'; filterPriceMin=0; filterPriceMax=99999;
   renderGridOnly();
 }
 
@@ -556,6 +470,11 @@ function renderGridOnly(){
   const sec=DEFS.find(s=>s.id===activeSection);
   let filtered=parts.filter(p=>p.sid===activeSection&&p.brand===activeBrand&&p.model===activeModel);
   if(searchQ){const q=searchQ.toLowerCase();filtered=filtered.filter(p=>p.name.toLowerCase().includes(q)||(p.notes||'').toLowerCase().includes(q));}
+  if(filterPublish==='pub') filtered=filtered.filter(p=>p.publish);
+  if(filterPublish==='priv') filtered=filtered.filter(p=>!p.publish);
+  if(filterStock!=='all') filtered=filtered.filter(p=>(p.stock||'stock')===filterStock);
+  if(filterPriceMin>0) filtered=filtered.filter(p=>(parseFloat(p.price)||0)>=filterPriceMin);
+  if(filterPriceMax<99999) filtered=filtered.filter(p=>(parseFloat(p.price)||0)<=filterPriceMax);
   filtered.sort((a,b)=>{
     if(sortBy==='price-asc') return (parseFloat(a.price)||0)-(parseFloat(b.price)||0);
     if(sortBy==='price-desc') return (parseFloat(b.price)||0)-(parseFloat(a.price)||0);
@@ -592,6 +511,10 @@ function renderGridOnly(){
 }
 
 window.onSearch = v=>{searchQ=v;const b=document.getElementById('search-clear-btn');if(b)b.style.display=v?'block':'none';renderGridOnly();}
+window.setFilterPublish = v=>{filterPublish=v;renderGridOnly();}
+window.setFilterStock = v=>{filterStock=v;renderGridOnly();}
+window.setFilterPriceMin = v=>{filterPriceMin=parseFloat(v)||0;document.getElementById('qf-price-min-disp').textContent=v+'€';renderGridOnly();}
+window.setFilterPriceMax = v=>{filterPriceMax=parseFloat(v)||99999;document.getElementById('qf-price-max-disp').textContent=(v>=99999?'Max':v+'€');renderGridOnly();}
 window.clearSearch = ()=>{searchQ='';const i=document.getElementById('search-inp');if(i)i.value='';const b=document.getElementById('search-clear-btn');if(b)b.style.display='none';renderGridOnly();}
 window.onSort = v=>{sortBy=v;renderGridOnly();}
 
@@ -646,8 +569,10 @@ window.openAddPart = function(sid,brand,model){
   ['f-sizes','f-buy-price'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const fp=document.getElementById('f-publish'); if(fp) fp.checked=false;
   document.getElementById('f-stock').value='stock';
+  const showResale=sid==='complete'||sid==='accessoire';
   document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
   document.getElementById('buy-price-section').style.display='block';
+  document.getElementById('price-resale-section').style.display=showResale?'block':'none';
   document.getElementById('calc-section').style.display=isComplete?'block':'none';
   if(isComplete){document.getElementById('calc-cout').textContent='—';document.getElementById('calc-benefice').textContent='—';document.getElementById('calc-marge-pct').textContent='—';document.getElementById('calc-result').textContent='—';}
   resetImg(); openModal('add-modal');
@@ -671,8 +596,10 @@ window.openEditPart = function(id){
   document.getElementById('f-link').value=p.link||'';
   document.getElementById('f-notes').value=p.notes||'';
   document.getElementById('f-stock').value=p.stock||'stock';
+  const showResaleEdit=p.sid==='complete'||p.sid==='accessoire';
   document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
   document.getElementById('buy-price-section').style.display='block';
+  document.getElementById('price-resale-section').style.display=showResaleEdit?'block':'none';
   document.getElementById('calc-section').style.display=isComplete?'block':'none';
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
@@ -686,8 +613,9 @@ window.openDetail = function(id){
   const stockMap={stock:'En stock',commande:'En commande',rupture:'Rupture',vendu:'Vendu'};
   const stockClsMap={stock:'green',commande:'amber',rupture:'red',vendu:'purple'};
   const f=(l,v,full)=>`<div class="dfield${full?' full':''}"><div class="dfl">${l}</div><div class="dfv">${v}</div></div>`;
+  const showResaleDetail=p.sid==='complete'||p.sid==='accessoire';
   let margeHtml='';
-  if(p.buyPrice&&p.price){
+  if(showResaleDetail&&p.buyPrice&&p.price){
     const a=parseFloat(p.buyPrice)||0,v=parseFloat(p.price)||0,b=v-a,pct=a>0?((b/v)*100).toFixed(0):0;
     margeHtml=`<div class="marge-strip">
       <div class="marge-item"><div class="marge-lbl">Achat perso</div><div class="marge-val buy">${a.toFixed(2)}€</div></div>
@@ -718,7 +646,7 @@ window.openDetail = function(id){
       <div class="detail-fields">
         ${p.sizes?f('Tailles',p.sizes):''}
         ${p.buyPrice?f('Mon prix d\'achat',`${parseFloat(p.buyPrice).toFixed(2)}€`):''}
-        ${p.price?f('Prix client (revente)',`${parseFloat(p.price).toFixed(2)}€`):''}
+        ${showResaleDetail&&p.price?f('Prix client (revente)',`${parseFloat(p.price).toFixed(2)}€`):''}
         ${p.link?f('Fournisseur',`<a href="${p.link}" target="_blank">↗ Ouvrir</a>`,true):''}
       </div>
       ${p.notes?`<div class="detail-notes"><div class="dfl">Notes</div><p>${p.notes.replace(/\n/g,'<br>')}</p></div>`:''}
@@ -809,6 +737,76 @@ document.addEventListener('keydown',e=>{
   }
 });
 
+// ─── THEME ────────────────────────────────────────────────────────────────────
+(function(){
+  if(localStorage.getItem('smtheme')==='light'){
+    document.body.classList.add('light');
+    const b=document.getElementById('theme-btn');if(b)b.textContent='🌙';
+  }
+})();
+window.toggleTheme=function(){
+  const isLight=document.body.classList.toggle('light');
+  localStorage.setItem('smtheme',isLight?'light':'dark');
+  const b=document.getElementById('theme-btn');if(b)b.textContent=isLight?'🌙':'☀';
+};
+
+// ─── STATISTICS VIEW ──────────────────────────────────────────────────────────
+function renderStats(){
+  const main=document.getElementById('main');
+  const total=parts.length;
+  const totalVal=parts.reduce((a,p)=>a+(parseFloat(p.price)||0),0);
+  const totalBuy=parts.reduce((a,p)=>a+(parseFloat(p.buyPrice)||0),0);
+  const totalProfit=totalVal-totalBuy;
+  const published=parts.filter(p=>p.publish).length;
+  const inStock=parts.filter(p=>p.stock==='stock').length;
+  const sold=parts.filter(p=>p.stock==='vendu').length;
+  // Top 5 most expensive
+  const top5=[...parts].filter(p=>p.price).sort((a,b)=>(parseFloat(b.price)||0)-(parseFloat(a.price)||0)).slice(0,5);
+  // By section
+  const bySec=DEFS.map(s=>{
+    const sp=parts.filter(p=>p.sid===s.id);
+    const val=sp.reduce((a,p)=>a+(parseFloat(p.price)||0),0);
+    return{label:s.label,icon:s.icon,count:sp.length,val};
+  }).filter(s=>s.count>0).sort((a,b)=>b.count-a.count);
+  // Price history sparklines: last 30 prices added (by ts)
+  const avgMargin=totalBuy>0?((totalProfit/totalVal)*100).toFixed(1):0;
+
+  main.innerHTML=`<div class="stats-page">
+    <h2 class="settings-title">📊 Statistiques</h2>
+    <div class="stats-kpi-grid">
+      <div class="kpi-card"><div class="kpi-icon">📦</div><div class="kpi-val">${total}</div><div class="kpi-lbl">Pièces totales</div></div>
+      <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-val">${totalVal.toFixed(0)}€</div><div class="kpi-lbl">Valeur catalogue</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🏷️</div><div class="kpi-val">${totalBuy.toFixed(0)}€</div><div class="kpi-lbl">Total investi</div></div>
+      <div class="kpi-card accent"><div class="kpi-icon">📈</div><div class="kpi-val">${totalProfit.toFixed(0)}€</div><div class="kpi-lbl">Bénéfice potentiel</div></div>
+      <div class="kpi-card"><div class="kpi-icon">%</div><div class="kpi-val">${avgMargin}%</div><div class="kpi-lbl">Marge moyenne</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🌐</div><div class="kpi-val">${published}</div><div class="kpi-lbl">Publiés Adri Mods</div></div>
+      <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-val">${inStock}</div><div class="kpi-lbl">En stock</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🏷️</div><div class="kpi-val">${sold}</div><div class="kpi-lbl">Vendus</div></div>
+    </div>
+    <div class="stats-two-col">
+      <div class="stats-card">
+        <div class="stats-card-title">🏆 Pièces les plus chères</div>
+        ${top5.map((p,i)=>`<div class="stats-row">
+          <span class="stats-rank">${i+1}</span>
+          ${p.img?`<img src="${p.img}" class="stats-thumb">`:'<div class="stats-thumb-ph"></div>'}
+          <span class="stats-row-name">${p.name}</span>
+          <span class="stats-row-price">${parseFloat(p.price).toFixed(2)}€</span>
+        </div>`).join('')}
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">📂 Répartition par section</div>
+        ${bySec.map(s=>`<div class="stats-sec-row">
+          <span class="stats-sec-icon">${s.icon}</span>
+          <span class="stats-sec-name">${s.label}</span>
+          <div class="stats-bar-wrap"><div class="stats-bar" style="width:${Math.round((s.count/total)*100)}%"></div></div>
+          <span class="stats-sec-cnt">${s.count}</span>
+          <span class="stats-sec-val">${s.val.toFixed(0)}€</span>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
 loadSectionLabels().then(startListeners);
 </script>
 
@@ -822,6 +820,14 @@ loadSectionLabels().then(startListeners);
   --gd:rgba(176,184,200,.1);--gg:rgba(176,184,200,.05);--gb:rgba(176,184,200,.22);
   --green:#4aaf78;--red-c:#c05a5a;--blue-c:#6a96cc;--amber-c:#b0b8c8;
   --r:10px;--r-sm:6px;
+}
+body.light{
+  --bg:#f4f3f0;--bg2:#ffffff;--bg3:#f0eeed;--bg4:#e8e6e2;
+  --line:#e0ddd8;--line2:#ccc9c3;
+  --text:#1a1714;--text2:#4a4642;--text3:#8a8480;
+  --gold:#6a6e78;--gold2:#3a3e48;
+  --gd:rgba(26,23,20,.07);--gg:rgba(26,23,20,.04);--gb:rgba(26,23,20,.18);
+  --green:#2a7a4a;--red-c:#b04040;--blue-c:#3a66aa;--amber-c:#6a6e78;
 }
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:3px;height:3px}
@@ -947,20 +953,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .btn-rename:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 .btn-rename.sm{padding:3px 8px;font-size:9px}
 .btn-rename.xs{padding:2px 7px;font-size:9px}
-
-/* ── TAOBAO IMPORT ── */
-.taobao-import-block{background:var(--bg3);border:1px solid var(--gb);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px}
-.taobao-import-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px}
-.taobao-import-row{display:flex;gap:8px}
-.taobao-inp{flex:1;padding:8px 12px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg4);color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;transition:border-color .14s}
-.taobao-inp:focus{border-color:var(--gb)}
-.taobao-inp::placeholder{color:var(--text3)}
-.taobao-btn{padding:8px 14px;background:var(--gd);border:1px solid var(--gb);border-radius:var(--r-sm);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s}
-.taobao-btn:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
-.taobao-status{font-size:11px;margin-top:6px;line-height:1.4;min-height:16px}
-.taobao-status.ok{color:var(--green)}
-.taobao-status.err{color:var(--red-c)}
-.taobao-status.loading{color:var(--text3)}
 
 /* ── BUTTONS ── */
 .btn-gold{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .14s;white-space:nowrap}
@@ -1089,6 +1081,42 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .loading-logo{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;letter-spacing:.18em;text-transform:uppercase}
 .loading-logo span{color:var(--gold2)}
 .loading-line{width:48px;height:1px;background:linear-gradient(90deg,transparent,var(--gold2),transparent)}
+
+/* ── STATS ── */
+.stats-page{width:100%}
+.stats-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px}
+.kpi-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.kpi-card.accent{border-color:rgba(74,175,120,.3);background:rgba(74,175,120,.07)}
+.kpi-icon{font-size:18px;margin-bottom:2px}
+.kpi-val{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;color:var(--text)}
+.kpi-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.stats-two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.stats-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.stats-card-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px}
+.stats-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.stats-row:last-child{border-bottom:none}
+.stats-rank{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);width:14px;flex-shrink:0}
+.stats-thumb{width:34px;height:34px;object-fit:cover;border-radius:4px;flex-shrink:0}
+.stats-thumb-ph{width:34px;height:34px;border-radius:4px;background:var(--bg3);flex-shrink:0}
+.stats-row-name{flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-row-price{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold2);flex-shrink:0}
+.stats-sec-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.stats-sec-row:last-child{border-bottom:none}
+.stats-sec-icon{font-size:14px;flex-shrink:0}
+.stats-sec-name{font-size:12px;font-weight:500;width:110px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-bar-wrap{flex:1;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.stats-bar{height:100%;background:var(--gold2);border-radius:3px;transition:width .3s}
+.stats-sec-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);width:22px;text-align:right;flex-shrink:0}
+.stats-sec-val{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);width:44px;text-align:right;flex-shrink:0}
+
+/* ── QUICK FILTERS ── */
+.quick-filter-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0 12px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.qf-group{display:flex;align-items:center;gap:6px}
+.qf-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
+.qf-sel{padding:4px 8px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;cursor:pointer;outline:none}
+.qf-sel option{background:var(--bg3)}
+.qf-slider{width:70px;accent-color:var(--gold2);cursor:pointer}
+.qf-disp{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold2);min-width:28px}
 </style>
 </head>
 <body>
@@ -1116,6 +1144,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     <div class="hdr-sp"></div>
     <div class="hdr-btns">
       <button class="view-btn active" data-view="catalogue" onclick="setView('catalogue')">📦 Catalogue</button>
+      <button class="view-btn" data-view="stats" onclick="setView('stats')">📊 Statistiques</button>
       <button class="view-btn" data-view="settings" onclick="setView('settings')">⚙️ Paramètres</button>
       <button class="btn-sb" onclick="exportJSON()">↓ Export</button>
       <label class="btn-sb" style="cursor:pointer">↑ Import<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label>
@@ -1144,15 +1173,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     </div>
     <div class="modal-body">
       <div class="ctx-pill" id="add-ctx"></div>
-
-      <!-- TAOBAO IMPORT -->
-      <div class="taobao-import-block">
-        <div class="taobao-import-title">🔗 Importer depuis Taobao</div>
-        <div class="taobao-import-row">
-          <input type="url" id="taobao-url" placeholder="Colle le lien Taobao ici…" class="taobao-inp">
-          <button class="taobao-btn" onclick="importFromTaobao()">Importer</button>
-        </div>
-        <div class="taobao-status" id="taobao-status"></div>
       </div>
 
       <div class="fg">
@@ -1214,16 +1234,16 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
         </div>
       </div>
 
-      <div class="form-2">
+      <div id="price-resale-section">
         <div class="fg"><label>Prix client / Revente (€)</label><input type="number" id="f-price" placeholder="0.00" min="0" step="0.01" oninput="onManualPriceChange()"></div>
-        <div class="fg"><label>Stock</label>
-          <select id="f-stock">
-            <option value="stock">En stock</option>
-            <option value="commande">En commande</option>
-            <option value="rupture">Rupture</option>
-            <option value="vendu">Vendu</option>
-          </select>
-        </div>
+      </div>
+      <div class="fg"><label>Stock</label>
+        <select id="f-stock">
+          <option value="stock">En stock</option>
+          <option value="commande">En commande</option>
+          <option value="rupture">Rupture</option>
+          <option value="vendu">Vendu</option>
+        </select>
       </div>
 
       <div class="fg"><label>Lien fournisseur</label><input type="url" id="f-link" placeholder="https://…"></div>
