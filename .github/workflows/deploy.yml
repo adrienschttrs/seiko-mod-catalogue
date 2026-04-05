@@ -3,7 +3,7 @@ on:
   push:
     branches: [ main ]
 jobs:
-  deploy:
+  deploy-catalogue:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,4 +13,16 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_TOKEN }}
           projectId: seiko-mod-catalogue
           channelId: live
-          targets: catalogue,client
+          target: catalogue
+
+  deploy-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_TOKEN }}
+          projectId: seiko-mod-catalogue
+          channelId: live
+          target: client
