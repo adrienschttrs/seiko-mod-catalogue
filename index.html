@@ -104,10 +104,10 @@ async function uploadToCloudinary(file) {
 // ─── CALCULATRICE PRIX ────────────────────────────────────────────────────────
 window.calcPrice = function() {
   const achat   = parseFloat(document.getElementById('f-buy-price').value)  || 0;
-  const ship_in = parseFloat(document.getElementById('calc-ship-in').value) || 5;
+  const ship_in = parseFloat(document.getElementById('calc-ship-in').value) || 8;
   const labor   = parseFloat(document.getElementById('calc-labor').value)   || 37;
   const ship_out= parseFloat(document.getElementById('calc-ship-out').value)|| 5;
-  const marge   = parseFloat(document.getElementById('calc-marge').value)   || 2.3;
+  const marge   = parseFloat(document.getElementById('calc-marge').value)   || 1.73;
   const vinted  = document.getElementById('calc-vinted').checked;
 
   const coutTotal = achat + ship_in + labor + ship_out;
@@ -116,14 +116,12 @@ window.calcPrice = function() {
   const benefice = prixSuggere - coutTotal;
   const margeNet = coutTotal > 0 ? ((benefice / prixSuggere) * 100).toFixed(0) : 0;
 
-  // Update display
-  document.getElementById('calc-cout').textContent = coutTotal.toFixed(2) + '€';
+  document.getElementById('calc-cout').textContent     = coutTotal.toFixed(2) + '€';
   document.getElementById('calc-benefice').textContent = benefice.toFixed(2) + '€';
-  document.getElementById('calc-marge-pct').textContent = margeNet + '%';
-  document.getElementById('calc-result').textContent = prixSuggere.toFixed(2) + '€';
-  document.getElementById('calc-marge-val').textContent = marge.toFixed(1) + 'x';
+  document.getElementById('calc-marge-pct').textContent= margeNet + '%';
+  document.getElementById('calc-result').textContent   = prixSuggere.toFixed(2) + '€';
+  document.getElementById('calc-marge-val').textContent= marge.toFixed(1) + 'x';
 
-  // Auto-fill sell price
   if(achat > 0) document.getElementById('f-price').value = prixSuggere.toFixed(2);
 };
 
@@ -456,10 +454,16 @@ window.openAddPart = function(sid,brand,model){
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${brand} · ${model}`;
   ['f-name','f-buy-price','f-price','f-sku','f-compat','f-link','f-notes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('f-stock').value='stock';
-  document.getElementById('calc-result').textContent='—';
-  document.getElementById('calc-cout').textContent='—';
-  document.getElementById('calc-benefice').textContent='—';
-  document.getElementById('calc-marge-pct').textContent='—';
+  // Calculatrice visible uniquement pour les montres complètes
+  const showCalc = sid === 'complete';
+  document.getElementById('calc-section').style.display = showCalc ? 'block' : 'none';
+  document.getElementById('buy-price-section').style.display = showCalc ? 'block' : 'none';
+  if(showCalc){
+    document.getElementById('calc-result').textContent='—';
+    document.getElementById('calc-cout').textContent='—';
+    document.getElementById('calc-benefice').textContent='—';
+    document.getElementById('calc-marge-pct').textContent='—';
+  }
   resetImg(); openModal('add-modal');
   setTimeout(()=>document.getElementById('f-name').focus(),80);
 };
@@ -479,10 +483,13 @@ window.openEditPart = function(id){
   document.getElementById('f-link').value=p.link||'';
   document.getElementById('f-notes').value=p.notes||'';
   document.getElementById('f-stock').value=p.stock||'stock';
+  const showCalc = p.sid === 'complete';
+  document.getElementById('calc-section').style.display = showCalc ? 'block' : 'none';
+  document.getElementById('buy-price-section').style.display = showCalc ? 'block' : 'none';
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
   openModal('add-modal');
-  if(p.buyPrice) calcPrice();
+  if(showCalc && p.buyPrice) calcPrice();
 };
 
 window.openDetail = function(id){
@@ -950,40 +957,42 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
         <div class="fg"><label>Compatibilité</label><input type="text" id="f-compat" placeholder="SKX007, NH35…"></div>
       </div>
 
-      <!-- ── CALCULATRICE ── -->
+      <!-- Prix achat (montres complètes seulement) -->
+      <div id="buy-price-section" style="display:none">
+        <div class="fg"><label>Prix achat total des pièces (€)</label><input type="number" id="f-buy-price" placeholder="ex: 65.00" min="0" step="0.01" oninput="calcPrice()"></div>
+      </div>
+
+      <!-- ── CALCULATRICE (montres complètes seulement) ── -->
+      <div id="calc-section" style="display:none">
       <div class="calc-block">
         <div class="calc-title">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
-          Calculatrice de prix
+          Calculatrice de prix de vente
         </div>
         <div class="calc-row">
-          <div class="calc-field">
-            <label>Prix achat fournisseur (€)</label>
-            <input type="number" id="f-buy-price" placeholder="0.00" min="0" step="0.01" oninput="calcPrice()">
-          </div>
           <div class="calc-field">
             <label>Livraison fournisseur (€)</label>
             <input type="number" id="calc-ship-in" value="8" min="0" step="0.5" oninput="calcPrice()">
           </div>
-        </div>
-        <div class="calc-row">
           <div class="calc-field">
-            <label>Main d'œuvre (€) — 1h30 à 25€/h</label>
+            <label>Main d'œuvre — 1h30 à 25€/h</label>
             <input type="number" id="calc-labor" value="37" min="0" step="1" oninput="calcPrice()">
           </div>
+        </div>
+        <div class="calc-row">
           <div class="calc-field">
             <label>Expédition client (€)</label>
             <input type="number" id="calc-ship-out" value="5" min="0" step="0.5" oninput="calcPrice()">
           </div>
+          <div class="calc-field" style="display:flex;align-items:center;gap:8px;padding-top:18px">
+            <input type="checkbox" id="calc-vinted" onchange="calcPrice()" style="width:16px;height:16px;accent-color:var(--gold2)">
+            <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;color:var(--text2)" for="calc-vinted">Vente sur Vinted (+5%)</label>
+          </div>
         </div>
-        <div class="calc-row" style="align-items:center">
+        <div class="calc-row" style="grid-template-columns:1fr">
           <div class="calc-field">
             <label>Multiplicateur marge — <span id="calc-marge-val">1.7x</span></label>
             <input type="range" id="calc-marge" min="1.2" max="3.5" step="0.1" value="1.73" oninput="calcPrice()" style="width:100%;margin-top:6px;accent-color:var(--gold2)">
-          </div>
-          <div class="calc-field" style="display:flex;align-items:center;gap:8px;padding-top:18px">
-            <input type="checkbox" id="calc-vinted" onchange="calcPrice()" style="width:16px;height:16px;accent-color:var(--gold2)">
-            <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer" for="calc-vinted">Vente sur Vinted (+5%)</label>
           </div>
         </div>
         <div class="calc-result-row">
@@ -993,6 +1002,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
           <div class="calc-stat main"><div class="calc-stat-lbl">Prix suggéré</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
           <button class="calc-apply-btn" onclick="applyCalcPrice()">Appliquer →</button>
         </div>
+      </div>
       </div>
 
       <!-- Prix de vente + Stock -->
