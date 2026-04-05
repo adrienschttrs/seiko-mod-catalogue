@@ -13,5 +13,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_TOKEN }}
           projectId: seiko-mod-catalogue
           channelId: live
-        env:
-          FIREBASE_CLI_PREVIEWS: hostingchannels
+          targets: catalogue,client
