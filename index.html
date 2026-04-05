@@ -76,7 +76,6 @@ let DEFS = JSON.parse(JSON.stringify(DEFAULT_DEFS));
 let parts = [], editingId=null, addCtx=null, currentImgUrl=null, customCtx=null, uploadingImg=false;
 let activeSection='bracelet', activeBrand=null, activeModel=null, activeView='catalogue';
 let searchQ='', sortBy='name';
-let filterPublish='all', filterPriceMin=0, filterPriceMax=99999, filterStock='all';
 
 // ─── FIRESTORE LISTENERS ──────────────────────────────────────────────────────
 function startListeners() {
@@ -101,7 +100,6 @@ function startListeners() {
 function renderAll() {
   if(activeView==='catalogue') render();
   if(activeView==='settings') renderSettings();
-  if(activeView==='stats') renderStats();
 }
 
 // ─── CLOUDINARY ───────────────────────────────────────────────────────────────
@@ -319,11 +317,18 @@ function setImgLoading(on){
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
-window.setSection  = s=>{activeSection=s;activeBrand=null;activeModel=null;searchQ='';render();}
+window.setSection  = function(s){
+  activeSection=s; activeBrand=null; activeModel=null; searchQ='';
+  if(activeView!=='catalogue'){
+    activeView='catalogue';
+    document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view==='catalogue'));
+  }
+  render();
+};
 window.setBrand    = b=>{activeBrand=b;activeModel=null;searchQ='';render();}
 window.setModel    = m=>{activeModel=m;searchQ='';render();}
 window.goBack      = ()=>{if(activeModel)activeModel=null;else if(activeBrand)activeBrand=null;render();}
-window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();if(v==='stats')renderStats();
+window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();
   document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
 }
 
@@ -430,39 +435,7 @@ function renderPartGrid(){
         <button class="btn-gold sm" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Pièce</button>
       </div>
     </div>
-    <div class="quick-filter-bar" id="quick-filter-bar">
-      <div class="qf-group">
-        <span class="qf-lbl">Visibilité</span>
-        <select class="qf-sel" onchange="setFilterPublish(this.value)">
-          <option value="all">Tous</option>
-          <option value="pub">Publiés 🌐</option>
-          <option value="priv">Privés 🔒</option>
-        </select>
-      </div>
-      <div class="qf-group">
-        <span class="qf-lbl">Stock</span>
-        <select class="qf-sel" onchange="setFilterStock(this.value)">
-          <option value="all">Tous</option>
-          <option value="stock">En stock</option>
-          <option value="commande">Commande</option>
-          <option value="rupture">Rupture</option>
-          <option value="vendu">Vendu</option>
-        </select>
-      </div>
-      <div class="qf-group">
-        <span class="qf-lbl">Prix min</span>
-        <input type="range" class="qf-slider" min="0" max="500" step="5" value="0" oninput="setFilterPriceMin(this.value)">
-        <span class="qf-disp" id="qf-price-min-disp">0€</span>
-      </div>
-      <div class="qf-group">
-        <span class="qf-lbl">Prix max</span>
-        <input type="range" class="qf-slider" min="50" max="99999" step="10" value="99999" oninput="setFilterPriceMax(this.value)">
-        <span class="qf-disp" id="qf-price-max-disp">Max</span>
-      </div>
-    </div>
     <div id="grid-results"></div>`;
-  // Reset filters when entering part grid
-  filterPublish='all'; filterStock='all'; filterPriceMin=0; filterPriceMax=99999;
   renderGridOnly();
 }
 
@@ -470,11 +443,6 @@ function renderGridOnly(){
   const sec=DEFS.find(s=>s.id===activeSection);
   let filtered=parts.filter(p=>p.sid===activeSection&&p.brand===activeBrand&&p.model===activeModel);
   if(searchQ){const q=searchQ.toLowerCase();filtered=filtered.filter(p=>p.name.toLowerCase().includes(q)||(p.notes||'').toLowerCase().includes(q));}
-  if(filterPublish==='pub') filtered=filtered.filter(p=>p.publish);
-  if(filterPublish==='priv') filtered=filtered.filter(p=>!p.publish);
-  if(filterStock!=='all') filtered=filtered.filter(p=>(p.stock||'stock')===filterStock);
-  if(filterPriceMin>0) filtered=filtered.filter(p=>(parseFloat(p.price)||0)>=filterPriceMin);
-  if(filterPriceMax<99999) filtered=filtered.filter(p=>(parseFloat(p.price)||0)<=filterPriceMax);
   filtered.sort((a,b)=>{
     if(sortBy==='price-asc') return (parseFloat(a.price)||0)-(parseFloat(b.price)||0);
     if(sortBy==='price-desc') return (parseFloat(b.price)||0)-(parseFloat(a.price)||0);
@@ -502,7 +470,7 @@ function renderGridOnly(){
         <div class="product-name">${p.name}</div>
         ${p.sizes?`<div class="product-sku">${p.sizes}</div>`:''}
         <div class="product-footer">
-          ${p.price?`<div class="product-price">${parseFloat(p.price).toFixed(2)}€</div>`:'<div></div>'}
+          ${(p.sid==='complete'||p.sid==='accessoire')&&p.price?`<div class="product-price">${parseFloat(p.price).toFixed(2)}€</div>`:'<div></div>'}
           <span class="stock-dot ${sc}" title="${sl}"></span>
         </div>
       </div>
@@ -511,10 +479,6 @@ function renderGridOnly(){
 }
 
 window.onSearch = v=>{searchQ=v;const b=document.getElementById('search-clear-btn');if(b)b.style.display=v?'block':'none';renderGridOnly();}
-window.setFilterPublish = v=>{filterPublish=v;renderGridOnly();}
-window.setFilterStock = v=>{filterStock=v;renderGridOnly();}
-window.setFilterPriceMin = v=>{filterPriceMin=parseFloat(v)||0;document.getElementById('qf-price-min-disp').textContent=v+'€';renderGridOnly();}
-window.setFilterPriceMax = v=>{filterPriceMax=parseFloat(v)||99999;document.getElementById('qf-price-max-disp').textContent=(v>=99999?'Max':v+'€');renderGridOnly();}
 window.clearSearch = ()=>{searchQ='';const i=document.getElementById('search-inp');if(i)i.value='';const b=document.getElementById('search-clear-btn');if(b)b.style.display='none';renderGridOnly();}
 window.onSort = v=>{sortBy=v;renderGridOnly();}
 
@@ -538,7 +502,10 @@ function renderSettings(){
       html+=`<div class="settings-brand-card">
         <div class="settings-brand-hdr">
           <span class="settings-brand-lbl">📁 ${brand.name}</span>
-          <button class="btn-rename xs" onclick="openRenameItem('brand','${sec.id}','${esc(brand.name)}')">✎</button>
+          <div style="display:flex;gap:3px">
+            <button class="btn-rename xs" onclick="openRenameItem('brand','${sec.id}','${esc(brand.name)}')">✎</button>
+            <button class="btn-rename xs del" onclick="deleteBrand('${sec.id}','${esc(brand.name)}')" title="Supprimer">✕</button>
+          </div>
         </div>
         <div class="settings-models-list">`;
       brand.models.forEach(model=>{
@@ -547,6 +514,7 @@ function renderSettings(){
           <span>${model}</span>
           ${cnt?`<span class="chip-cnt">${cnt}</span>`:''}
           <button onclick="openRenameItem('model','${sec.id}','${esc(brand.name)}','${esc(model)}')" title="Renommer">✎</button>
+          <button class="del-model-btn" onclick="deleteModel('${sec.id}','${esc(brand.name)}','${esc(model)}')" title="Supprimer">✕</button>
         </div>`;
       });
       html+=`</div></div>`;
@@ -604,7 +572,22 @@ window.openEditPart = function(id){
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
   openModal('add-modal');
-  if(isComplete&&p.buyPrice) calcPrice();
+  // Show calc stats without overwriting the saved price
+  if(isComplete&&p.buyPrice){
+    const achat=parseFloat(p.buyPrice)||0;
+    const ship_in=8, labor=37, ship_out=5;
+    const cout=achat+ship_in+labor+ship_out;
+    const savedPrice=parseFloat(p.price)||0;
+    const benef=savedPrice-cout, pct=cout>0?((benef/savedPrice)*100).toFixed(0):0;
+    const marge=cout>0?(savedPrice/cout).toFixed(2):1.73;
+    document.getElementById('calc-cout').textContent=cout.toFixed(2)+'€';
+    document.getElementById('calc-benefice').textContent=benef.toFixed(2)+'€';
+    document.getElementById('calc-marge-pct').textContent=pct+'%';
+    document.getElementById('calc-result').textContent=savedPrice.toFixed(2)+'€';
+    document.getElementById('calc-marge-val').textContent=Math.min(3.5,Math.max(1.2,parseFloat(marge))).toFixed(1)+'x';
+    const slider=document.getElementById('calc-marge');
+    if(slider) slider.value=Math.min(3.5,Math.max(1.2,parseFloat(marge)));
+  }
 };
 
 window.openDetail = function(id){
@@ -633,7 +616,7 @@ window.openDetail = function(id){
         <div class="detail-path">${sec.label} · ${p.brand} · ${p.model}</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
-        ${p.price?`<div class="detail-price">${parseFloat(p.price).toFixed(2)}<span>€</span></div>`:''}
+        ${showResaleDetail&&p.price?`<div class="detail-price">${parseFloat(p.price).toFixed(2)}<span>€</span></div>`:''}
         <button class="modal-x" onclick="closeModal('detail-modal')">✕</button>
       </div>
     </div>
@@ -953,6 +936,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .btn-rename:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 .btn-rename.sm{padding:3px 8px;font-size:9px}
 .btn-rename.xs{padding:2px 7px;font-size:9px}
+.btn-rename.xs.del{border-color:rgba(192,90,90,.3);color:var(--red-c);background:rgba(192,90,90,.08)}
+.btn-rename.xs.del:hover{background:rgba(192,90,90,.2)}
+.del-model-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:9px;padding:0 2px;flex-shrink:0;transition:color .12s;margin-left:1px}
+.del-model-btn:hover{color:var(--red-c)}
 
 /* ── BUTTONS ── */
 .btn-gold{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .14s;white-space:nowrap}
@@ -980,7 +967,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .modal-footer{padding:12px 22px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg2)}
 
 /* ── DETAIL ── */
-.detail-modal{max-width:540px}
+.detail-modal{max-width:660px}
 .detail-hero{width:100%;height:200px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid var(--line)}
 .detail-hero img{width:100%;height:100%;object-fit:cover}
 .hero-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg3)}
@@ -1144,8 +1131,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     <div class="hdr-sp"></div>
     <div class="hdr-btns">
       <button class="view-btn active" data-view="catalogue" onclick="setView('catalogue')">📦 Catalogue</button>
-      <button class="view-btn" data-view="stats" onclick="setView('stats')">📊 Statistiques</button>
       <button class="view-btn" data-view="settings" onclick="setView('settings')">⚙️ Paramètres</button>
+      <button class="btn-sb" id="theme-btn" onclick="toggleTheme()" title="Mode clair/sombre">☀</button>
       <button class="btn-sb" onclick="exportJSON()">↓ Export</button>
       <label class="btn-sb" style="cursor:pointer">↑ Import<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label>
     </div>
@@ -1166,7 +1153,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 
 <!-- ADD / EDIT MODAL -->
 <div class="overlay hidden" id="add-modal">
-  <div class="modal" style="max-width:560px">
+  <div class="modal" style="max-width:680px">
     <div class="modal-hdr">
       <div class="modal-title" id="add-title">Nouvelle pièce</div>
       <button class="modal-x" onclick="closeModal('add-modal')">✕</button>
