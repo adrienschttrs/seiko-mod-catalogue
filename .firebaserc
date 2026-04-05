@@ -1,0 +1,17 @@
+{
+  "projects": {
+    "default": "seiko-mod-catalogue"
+  },
+  "targets": {
+    "seiko-mod-catalogue": {
+      "hosting": {
+        "catalogue": [
+          "seiko-mod-catalogue"
+        ],
+        "client": [
+          "adri-mods"
+        ]
+      }
+    }
+  }
+}
