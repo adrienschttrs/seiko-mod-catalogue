@@ -155,8 +155,8 @@ window.duplicatePart = async function(id) {
 // ─── CALCULATOR ───────────────────────────────────────────────────────────────
 window.calcPrice = function() {
   const achat    = parseFloat(document.getElementById('f-buy-price')?.value)||0;
-  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||8;
-  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||37;
+  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||12.5;
+  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||20;
   const ship_out = parseFloat(document.getElementById('calc-ship-out')?.value)||5;
   const marge    = parseFloat(document.getElementById('calc-marge')?.value)||1.73;
   const vinted   = document.getElementById('calc-vinted')?.checked;
@@ -176,8 +176,8 @@ window.calcPrice = function() {
 window.onManualPriceChange = function() {
   const manualPrice = parseFloat(document.getElementById('f-price')?.value)||0;
   const achat    = parseFloat(document.getElementById('f-buy-price')?.value)||0;
-  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||8;
-  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||37;
+  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||12.5;
+  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||20;
   const ship_out = parseFloat(document.getElementById('calc-ship-out')?.value)||5;
   const vinted   = document.getElementById('calc-vinted')?.checked;
   const cout = achat+ship_in+labor+ship_out;
@@ -213,7 +213,8 @@ window.deleteModel = async function(sid,brand,model) {
   const b=DEFS.find(s=>s.id===sid)?.brands.find(x=>x.name===brand);
   if(b) b.models=b.models.filter(m=>m!==model);
   if(activeModel===model) activeModel=null;
-  toast(`"${model}" supprimé`); render();
+  toast(`"${model}" supprimé`);
+  if(activeView==='settings') renderSettings(); else render();
 };
 
 window.deleteBrand = async function(sid,brand) {
@@ -224,7 +225,8 @@ window.deleteBrand = async function(sid,brand) {
   for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand)await deleteDoc(doc(db,'customBrands',d.id));}
   const sec=DEFS.find(s=>s.id===sid); if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
   if(activeBrand===brand){activeBrand=null;activeModel=null;}
-  toast(`"${brand}" supprimée`); render();
+  toast(`"${brand}" supprimée`);
+  if(activeView==='settings') renderSettings(); else render();
 };
 
 // ─── CUSTOM BRAND/MODEL ───────────────────────────────────────────────────────
@@ -279,7 +281,8 @@ window.saveRename = async function() {
       if(activeModel===ctx.model) activeModel=newName;
       toast(`Modèle renommé en "${newName}" ✓`);
     }
-    closeModal('rename-modal'); render();
+    closeModal('rename-modal');
+    if(activeView==='settings') renderSettings(); else render();
   }catch(e){toast('Erreur : '+e.message,true);}
 };
 
@@ -575,7 +578,7 @@ window.openEditPart = function(id){
   // Show calc stats without overwriting the saved price
   if(isComplete&&p.buyPrice){
     const achat=parseFloat(p.buyPrice)||0;
-    const ship_in=8, labor=37, ship_out=5;
+    const ship_in=12.5, labor=20, ship_out=5;
     const cout=achat+ship_in+labor+ship_out;
     const savedPrice=parseFloat(p.price)||0;
     const benef=savedPrice-cout, pct=cout>0?((benef/savedPrice)*100).toFixed(0):0;
@@ -1160,7 +1163,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     </div>
     <div class="modal-body">
       <div class="ctx-pill" id="add-ctx"></div>
-      </div>
 
       <div class="fg">
         <label>Photo</label>
@@ -1195,8 +1197,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
             Calculatrice de prix de vente
           </div>
           <div class="calc-row">
-            <div class="calc-field"><label>Livraison fournisseur (€)</label><input type="number" id="calc-ship-in" value="8" min="0" step="0.5" oninput="calcPrice()"></div>
-            <div class="calc-field"><label>Main d'œuvre — 1h30 à 25€/h</label><input type="number" id="calc-labor" value="37" min="0" step="1" oninput="calcPrice()"></div>
+            <div class="calc-field"><label>Livraison fournisseur (€)</label><input type="number" id="calc-ship-in" value="12.5" min="0" step="0.5" oninput="calcPrice()"></div>
+            <div class="calc-field"><label>Main d'œuvre (€)</label><input type="number" id="calc-labor" value="20" min="0" step="1" oninput="calcPrice()"></div>
           </div>
           <div class="calc-row">
             <div class="calc-field"><label>Expédition client (€)</label><input type="number" id="calc-ship-out" value="5" min="0" step="0.5" oninput="calcPrice()"></div>
