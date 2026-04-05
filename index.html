@@ -806,10 +806,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .empty-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
 
 /* ── SETTINGS ── */
-.settings-page{max-width:1200px}
+.settings-page{width:100%}
 .settings-title{font-family:'Playfair Display',serif;font-size:24px;margin-bottom:8px}
 .settings-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
-.settings-sections-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.settings-sections-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
 .settings-section{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
 .settings-sec-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg3)}
 .settings-sec-icon{font-size:16px}
