@@ -101,18 +101,51 @@ async function uploadToCloudinary(file) {
   return (await res.json()).secure_url;
 }
 
+// ─── CALCULATRICE PRIX ────────────────────────────────────────────────────────
+window.calcPrice = function() {
+  const achat   = parseFloat(document.getElementById('f-buy-price').value)  || 0;
+  const ship_in = parseFloat(document.getElementById('calc-ship-in').value) || 5;
+  const labor   = parseFloat(document.getElementById('calc-labor').value)   || 37;
+  const ship_out= parseFloat(document.getElementById('calc-ship-out').value)|| 5;
+  const marge   = parseFloat(document.getElementById('calc-marge').value)   || 2.3;
+  const vinted  = document.getElementById('calc-vinted').checked;
+
+  const coutTotal = achat + ship_in + labor + ship_out;
+  let prixSuggere = coutTotal * marge;
+  if(vinted) prixSuggere = (prixSuggere + 0.70) / (1 - 0.05);
+  const benefice = prixSuggere - coutTotal;
+  const margeNet = coutTotal > 0 ? ((benefice / prixSuggere) * 100).toFixed(0) : 0;
+
+  // Update display
+  document.getElementById('calc-cout').textContent = coutTotal.toFixed(2) + '€';
+  document.getElementById('calc-benefice').textContent = benefice.toFixed(2) + '€';
+  document.getElementById('calc-marge-pct').textContent = margeNet + '%';
+  document.getElementById('calc-result').textContent = prixSuggere.toFixed(2) + '€';
+  document.getElementById('calc-marge-val').textContent = marge.toFixed(1) + 'x';
+
+  // Auto-fill sell price
+  if(achat > 0) document.getElementById('f-price').value = prixSuggere.toFixed(2);
+};
+
+window.applyCalcPrice = function() {
+  const v = document.getElementById('calc-result').textContent;
+  document.getElementById('f-price').value = parseFloat(v).toFixed(2);
+  toast('Prix de vente appliqué ✓');
+};
+
 // ─── SAVE/DELETE PART ─────────────────────────────────────────────────────────
 window.savePart = async function() {
   const name=document.getElementById('f-name').value.trim();
   if(!name){toast('Nom obligatoire',true);return;}
   if(uploadingImg){toast('Upload en cours…',true);return;}
   const p={sid:addCtx.sid,brand:addCtx.brand,model:addCtx.model,name,
-    price:document.getElementById('f-price').value||'',
-    sku:document.getElementById('f-sku').value||'',
-    compat:document.getElementById('f-compat').value||'',
-    link:document.getElementById('f-link').value||'',
-    notes:document.getElementById('f-notes').value||'',
-    stock:document.getElementById('f-stock').value||'stock',
+    buyPrice: document.getElementById('f-buy-price').value||'',
+    price:    document.getElementById('f-price').value||'',
+    sku:      document.getElementById('f-sku').value||'',
+    compat:   document.getElementById('f-compat').value||'',
+    link:     document.getElementById('f-link').value||'',
+    notes:    document.getElementById('f-notes').value||'',
+    stock:    document.getElementById('f-stock').value||'stock',
     img:currentImgUrl||'', ts:Date.now()};
   try{
     setSaveBtn(true);
@@ -127,6 +160,14 @@ window.deletePart = async function(id) {
   if(!confirm('Supprimer cette pièce ?')) return;
   await deleteDoc(doc(db,'parts',id));
   closeModal('detail-modal'); toast('Pièce supprimée');
+};
+
+window.duplicatePart = async function(id) {
+  const p=parts.find(x=>x.id===id); if(!p) return;
+  const {id:_,...data}=p;
+  await addDoc(collection(db,'parts'),{...data, name:data.name+' (copie)', ts:Date.now()});
+  closeModal('detail-modal');
+  toast('Pièce dupliquée ✓');
 };
 
 window.deleteModel = async function(sid,brand,model) {
@@ -384,10 +425,14 @@ function renderGridOnly(){
   } else {
     let h=`<div class="product-grid">`;
     filtered.forEach(p=>{
-      const sc=p.stock==='rupture'?'red':p.stock==='commande'?'amber':'green';
-      const sl=p.stock==='rupture'?'Rupture':p.stock==='commande'?'Commande':'En stock';
-      h+=`<div class="product-card" onclick="openDetail('${p.id}')">
-        <div class="product-img">${p.img?`<img src="${p.img}" loading="lazy">`:`<span class="product-icon">${sec.icon}</span>`}</div>
+      const sc=p.stock==='rupture'?'red':p.stock==='commande'?'amber':p.stock==='vendu'?'purple':'green';
+      const sl=p.stock==='rupture'?'Rupture':p.stock==='commande'?'Commande':p.stock==='vendu'?'Vendu':'En stock';
+      h+=`<div class="product-card${p.stock==='vendu'?' sold':''}" onclick="openDetail('${p.id}')">
+        <div class="product-img">${p.img
+          ?`<img src="${p.img}" loading="lazy">`
+          :`<div class="product-placeholder"><span style="font-size:28px;opacity:.15">${sec.icon}</span><div class="placeholder-name">${p.name}</div></div>`}
+          ${p.stock==='vendu'?'<div class="sold-overlay">VENDU</div>':''}
+        </div>
         <div class="product-body">
           <div class="product-name">${p.name}</div>
           ${p.sku?`<div class="product-sku">${p.sku}</div>`:''}
@@ -409,8 +454,12 @@ window.openAddPart = function(sid,brand,model){
   const sec=DEFS.find(s=>s.id===sid);
   document.getElementById('add-title').textContent='Nouvelle pièce';
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${brand} · ${model}`;
-  ['f-name','f-price','f-sku','f-compat','f-link','f-notes'].forEach(id=>document.getElementById(id).value='');
+  ['f-name','f-buy-price','f-price','f-sku','f-compat','f-link','f-notes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('f-stock').value='stock';
+  document.getElementById('calc-result').textContent='—';
+  document.getElementById('calc-cout').textContent='—';
+  document.getElementById('calc-benefice').textContent='—';
+  document.getElementById('calc-marge-pct').textContent='—';
   resetImg(); openModal('add-modal');
   setTimeout(()=>document.getElementById('f-name').focus(),80);
 };
@@ -423,6 +472,7 @@ window.openEditPart = function(id){
   document.getElementById('add-title').textContent='Modifier la pièce';
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${p.brand} · ${p.model}`;
   document.getElementById('f-name').value=p.name;
+  document.getElementById('f-buy-price').value=p.buyPrice||'';
   document.getElementById('f-price').value=p.price||'';
   document.getElementById('f-sku').value=p.sku||'';
   document.getElementById('f-compat').value=p.compat||'';
@@ -432,39 +482,64 @@ window.openEditPart = function(id){
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
   openModal('add-modal');
+  if(p.buyPrice) calcPrice();
 };
 
 window.openDetail = function(id){
   const p=parts.find(x=>x.id===id); if(!p) return;
   const sec=DEFS.find(s=>s.id===p.sid);
-  const stockLbl=p.stock==='rupture'?'Rupture':p.stock==='commande'?'En commande':'En stock';
-  const stockCls=p.stock==='rupture'?'red':p.stock==='commande'?'amber':'green';
+  const stockMap={stock:'En stock',commande:'En commande',rupture:'Rupture',vendu:'Vendu'};
+  const stockClsMap={stock:'green',commande:'amber',rupture:'red',vendu:'purple'};
+  const stockLbl=stockMap[p.stock]||'En stock';
+  const stockCls=stockClsMap[p.stock]||'green';
   const f=(l,v,full)=>`<div class="dfield${full?' full':''}"><div class="dfl">${l}</div><div class="dfv">${v}</div></div>`;
+
+  // Marge calc display
+  let margeHtml='';
+  if(p.buyPrice&&p.price){
+    const achat=parseFloat(p.buyPrice)||0;
+    const vente=parseFloat(p.price)||0;
+    const benef=vente-achat;
+    const pct=achat>0?((benef/vente)*100).toFixed(0):0;
+    margeHtml=`<div class="marge-strip">
+      <div class="marge-item"><div class="marge-lbl">Achat</div><div class="marge-val buy">${achat.toFixed(2)}€</div></div>
+      <div class="marge-arrow">→</div>
+      <div class="marge-item"><div class="marge-lbl">Vente</div><div class="marge-val sell">${vente.toFixed(2)}€</div></div>
+      <div class="marge-arrow">→</div>
+      <div class="marge-item"><div class="marge-lbl">Bénéfice</div><div class="marge-val profit">+${benef.toFixed(2)}€ (${pct}%)</div></div>
+    </div>`;
+  }
+
   document.getElementById('detail-body').innerHTML=`
-    <div class="detail-hero">${p.img?`<img src="${p.img}">`:`<div class="hero-icon">${sec.icon}</div>`}</div>
+    <div class="detail-hero">${p.img
+      ?`<img src="${p.img}">`
+      :`<div class="hero-placeholder"><span style="font-size:52px;opacity:.15">${sec.icon}</span><div class="hero-placeholder-name">${p.name}</div></div>`}
+    </div>
     <div class="modal-hdr">
       <div>
         <div class="detail-name">${p.name}</div>
         <div class="detail-path">${sec.label} · ${p.brand} · ${p.model}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px">
         ${p.price?`<div class="detail-price">${parseFloat(p.price).toFixed(2)}<span>€</span></div>`:''}
         <button class="modal-x" onclick="closeModal('detail-modal')">✕</button>
       </div>
     </div>
     <div class="modal-body">
-      <div style="margin-bottom:14px"><span class="stock-badge ${stockCls}">${stockLbl}</span></div>
+      <div style="margin-bottom:12px"><span class="stock-badge ${stockCls}">${stockLbl}</span></div>
+      ${margeHtml}
       <div class="detail-fields">
         ${p.sku?f('SKU / Référence',`<code>${p.sku}</code>`):''}
         ${p.compat?f('Compatibilité',p.compat):''}
-        ${p.brand?f('Marque',p.brand):''}
-        ${p.model?f('Modèle',p.model):''}
+        ${p.buyPrice?f('Prix achat',`${parseFloat(p.buyPrice).toFixed(2)}€`):''}
+        ${p.price?f('Prix vente',`${parseFloat(p.price).toFixed(2)}€`):''}
         ${p.link?f('Fournisseur',`<a href="${p.link}" target="_blank">↗ Ouvrir</a>`,true):''}
       </div>
       ${p.notes?`<div class="detail-notes"><div class="dfl">Notes</div><p>${p.notes.replace(/\n/g,'<br>')}</p></div>`:''}
       <div class="detail-actions">
         <button class="btn-outline sm" onclick="closeModal('detail-modal')">Fermer</button>
         <button class="btn-outline sm blue" onclick="openEditPart('${p.id}')">✎ Modifier</button>
+        <button class="btn-outline sm" onclick="duplicatePart('${p.id}')">⧉ Dupliquer</button>
         <button class="btn-outline sm red" onclick="deletePart('${p.id}')">✕ Supprimer</button>
         ${p.link?`<button class="btn-gold sm" onclick="window.open('${p.link}','_blank')">↗ Fournisseur</button>`:''}
       </div>
@@ -740,7 +815,44 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .img-zone img{max-width:100%;max-height:108px;border-radius:var(--r-sm)}
 .img-hint{font-family:'JetBrains Mono',monospace;font-size:8px;color:#c8c6d8;letter-spacing:.1em;text-transform:uppercase}
 
-/* ── LOADING / SPINNER / TOAST ── */
+/* ── CALCULATOR ── */
+.calc-block{background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r);padding:14px 16px;margin-bottom:14px}
+.calc-title{display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px;font-weight:500}
+.calc-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.calc-field label{display:block;font-family:'JetBrains Mono',monospace;font-size:8px;color:#c0bece;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
+.calc-field input[type=number]{width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg4);color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;transition:border-color .14s}
+.calc-field input[type=number]:focus{border-color:var(--gb)}
+.calc-result-row{display:flex;align-items:center;gap:8px;background:var(--bg4);border-radius:var(--r-sm);padding:10px 12px;margin-top:4px;flex-wrap:wrap}
+.calc-stat{display:flex;flex-direction:column;gap:2px;flex:1;min-width:60px}
+.calc-stat.main{flex:1.4}
+.calc-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.calc-stat-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--text2)}
+.calc-stat-val.green{color:#4aaf78}
+.calc-stat-val.highlight{font-size:16px;color:var(--gold2);font-weight:600}
+.calc-apply-btn{padding:6px 12px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s;letter-spacing:.04em}
+.calc-apply-btn:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
+
+/* ── SOLD / PLACEHOLDER ── */
+.product-card.sold{opacity:.6}
+.product-card.sold .product-img{filter:grayscale(.4)}
+.sold-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#fff;letter-spacing:.14em}
+.product-img{position:relative}
+.product-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--bg3);padding:8px}
+.placeholder-name{font-size:10px;font-weight:500;color:var(--text2);text-align:center;line-height:1.3;max-width:90%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.hero-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg3)}
+.hero-placeholder-name{font-family:'Playfair Display',serif;font-size:18px;color:var(--text2);opacity:.6;text-align:center;padding:0 20px}
+.stock-dot.purple{background:#9b6dd6;box-shadow:0 0 5px rgba(155,109,214,.4)}
+.stock-badge.purple{background:rgba(155,109,214,.12);color:#b88fe8;border:1px solid rgba(155,109,214,.25)}
+
+/* ── MARGE STRIP ── */
+.marge-strip{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;flex-wrap:wrap}
+.marge-item{display:flex;flex-direction:column;gap:2px}
+.marge-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.marge-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500}
+.marge-val.buy{color:var(--red-c)}
+.marge-val.sell{color:var(--gold2)}
+.marge-val.profit{color:#4aaf78}
+.marge-arrow{color:var(--text3);font-size:14px}
 .spinner{width:18px;height:18px;border:1.5px solid var(--line2);border-top-color:var(--gold2);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:999}
@@ -810,13 +922,15 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 
 <!-- ADD / EDIT MODAL -->
 <div class="overlay hidden" id="add-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:560px">
     <div class="modal-hdr">
       <div class="modal-title" id="add-title">Nouvelle pièce</div>
       <button class="modal-x" onclick="closeModal('add-modal')">✕</button>
     </div>
     <div class="modal-body">
       <div class="ctx-pill" id="add-ctx"></div>
+
+      <!-- Photo -->
       <div class="fg">
         <label>Photo</label>
         <div class="img-zone" id="img-zone" onclick="document.getElementById('img-file').click()">
@@ -828,21 +942,72 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
           <input type="file" id="img-file" accept="image/*" style="display:none" onchange="handleImg(this)">
         </div>
       </div>
+
+      <!-- Nom + SKU -->
       <div class="fg"><label>Nom *</label><input type="text" id="f-name" placeholder="ex: Bracelet Jubilée 20mm"></div>
       <div class="form-2">
-        <div class="fg"><label>Prix (€)</label><input type="number" id="f-price" placeholder="0.00" min="0" step="0.01"></div>
         <div class="fg"><label>SKU / Référence</label><input type="text" id="f-sku" placeholder="REF-0042"></div>
-      </div>
-      <div class="form-2">
         <div class="fg"><label>Compatibilité</label><input type="text" id="f-compat" placeholder="SKX007, NH35…"></div>
+      </div>
+
+      <!-- ── CALCULATRICE ── -->
+      <div class="calc-block">
+        <div class="calc-title">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+          Calculatrice de prix
+        </div>
+        <div class="calc-row">
+          <div class="calc-field">
+            <label>Prix achat fournisseur (€)</label>
+            <input type="number" id="f-buy-price" placeholder="0.00" min="0" step="0.01" oninput="calcPrice()">
+          </div>
+          <div class="calc-field">
+            <label>Livraison fournisseur (€)</label>
+            <input type="number" id="calc-ship-in" value="8" min="0" step="0.5" oninput="calcPrice()">
+          </div>
+        </div>
+        <div class="calc-row">
+          <div class="calc-field">
+            <label>Main d'œuvre (€) — 1h30 à 25€/h</label>
+            <input type="number" id="calc-labor" value="37" min="0" step="1" oninput="calcPrice()">
+          </div>
+          <div class="calc-field">
+            <label>Expédition client (€)</label>
+            <input type="number" id="calc-ship-out" value="5" min="0" step="0.5" oninput="calcPrice()">
+          </div>
+        </div>
+        <div class="calc-row" style="align-items:center">
+          <div class="calc-field">
+            <label>Multiplicateur marge — <span id="calc-marge-val">1.7x</span></label>
+            <input type="range" id="calc-marge" min="1.2" max="3.5" step="0.1" value="1.73" oninput="calcPrice()" style="width:100%;margin-top:6px;accent-color:var(--gold2)">
+          </div>
+          <div class="calc-field" style="display:flex;align-items:center;gap:8px;padding-top:18px">
+            <input type="checkbox" id="calc-vinted" onchange="calcPrice()" style="width:16px;height:16px;accent-color:var(--gold2)">
+            <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer" for="calc-vinted">Vente sur Vinted (+5%)</label>
+          </div>
+        </div>
+        <div class="calc-result-row">
+          <div class="calc-stat"><div class="calc-stat-lbl">Coût total</div><div class="calc-stat-val" id="calc-cout">—</div></div>
+          <div class="calc-stat"><div class="calc-stat-lbl">Bénéfice</div><div class="calc-stat-val green" id="calc-benefice">—</div></div>
+          <div class="calc-stat"><div class="calc-stat-lbl">Marge nette</div><div class="calc-stat-val green" id="calc-marge-pct">—</div></div>
+          <div class="calc-stat main"><div class="calc-stat-lbl">Prix suggéré</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
+          <button class="calc-apply-btn" onclick="applyCalcPrice()">Appliquer →</button>
+        </div>
+      </div>
+
+      <!-- Prix de vente + Stock -->
+      <div class="form-2">
+        <div class="fg"><label>Prix de vente (€)</label><input type="number" id="f-price" placeholder="0.00" min="0" step="0.01"></div>
         <div class="fg"><label>Stock</label>
           <select id="f-stock">
             <option value="stock">En stock</option>
             <option value="commande">En commande</option>
             <option value="rupture">Rupture</option>
+            <option value="vendu">Vendu</option>
           </select>
         </div>
       </div>
+
       <div class="fg"><label>Lien fournisseur</label><input type="url" id="f-link" placeholder="https://…"></div>
       <div class="fg"><label>Notes</label><textarea id="f-notes" placeholder="Coloris, taille, état…"></textarea></div>
     </div>
