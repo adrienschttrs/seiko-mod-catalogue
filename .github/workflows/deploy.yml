@@ -25,3 +25,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_TOKEN_CLIENT }}
           projectId: adri-mods-client
           channelId: live
+          entryPoint: ./client
