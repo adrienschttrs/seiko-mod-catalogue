@@ -161,13 +161,47 @@ window.importFromTaobao = async function() {
   const url = urlInput.value.trim();
   if(!url) { status.textContent = '⚠️ Colle un lien Taobao d\'abord'; status.className='taobao-status err'; return; }
 
-  // Extract item ID from Taobao URL
+  // Extract item ID from Taobao URL (multiple formats)
   let itemId = null;
-  const idMatch = url.match(/[?&]id=(\d+)/) || url.match(/item\.taobao\.com\/item\.htm.*id=(\d+)/) || url.match(/\/(\d{10,})/);
-  if(idMatch) itemId = idMatch[1];
-  if(!itemId) { status.textContent = '⚠️ Lien Taobao invalide — copie l\'URL complète'; status.className='taobao-status err'; return; }
+  const patterns = [
+    /[?&]id=(\d+)/,
+    /item\.taobao\.com\/item\.htm[^?]*\?.*id=(\d+)/,
+    /taobao\.com\/.*\/(\d{10,})/,
+    /\/(\d{10,})\.htm/,
+    /\/(\d{10,})/
+  ];
+  for(const p of patterns) {
+    const m = url.match(p);
+    if(m) { itemId = m[1]; break; }
+  }
+  if(!itemId) { status.textContent = '⚠️ Lien Taobao invalide — copie l\'URL complète depuis le navigateur'; status.className='taobao-status err'; return; }
 
   status.textContent = '⏳ Récupération des données…'; status.className='taobao-status loading';
+
+  const EUR_RATE = 0.13;
+
+  // Helper: set image in form
+  function setImage(rawUrl) {
+    if(!rawUrl) return false;
+    const imgUrl = rawUrl.startsWith('//') ? 'https:' + rawUrl : rawUrl;
+    currentImgUrl = imgUrl;
+    const prev = document.getElementById('img-prev');
+    const ph = document.getElementById('img-ph');
+    const zone = document.getElementById('img-zone');
+    if(prev) { prev.src = imgUrl; prev.style.display = 'block'; }
+    if(ph) ph.style.display = 'none';
+    if(zone) zone.classList.add('filled');
+    return true;
+  }
+
+  // Helper: set price
+  function setPrice(yuan) {
+    if(!yuan || isNaN(yuan) || yuan <= 0) return false;
+    const eur = (parseFloat(yuan) * EUR_RATE).toFixed(2);
+    const field = document.getElementById('f-buy-price');
+    if(field) { field.value = eur; calcPrice(); }
+    return eur;
+  }
 
   try {
     const res = await fetch(`https://taobao-datahub.p.rapidapi.com/item_detail?itemid=${itemId}&country=FR`, {
@@ -177,46 +211,63 @@ window.importFromTaobao = async function() {
         'x-rapidapi-key': RAPIDAPI_KEY
       }
     });
+
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    console.log('Taobao API response:', JSON.stringify(data).substring(0, 500));
 
-    if(!res.ok || data.error) throw new Error(data.error || 'Erreur API');
+    // Navigate multiple possible response structures
+    const item = data?.result?.item || data?.item || data?.result || data;
 
-    const item = data.item || data.result || data;
+    // Try to find image in various locations
+    const rawImg =
+      item?.pic_url ||
+      item?.main_pic ||
+      item?.picUrl ||
+      item?.main_imgs?.[0] ||
+      item?.item_imgs?.[0]?.url ||
+      item?.images?.[0] ||
+      item?.pics?.[0] ||
+      data?.result?.item_imgs?.[0]?.url ||
+      data?.result?.pic_url;
 
-    // Extract photo
-    const imgUrl = item.pic_url || item.main_imgs?.[0] || item.item_imgs?.[0]?.url || item.images?.[0];
-    // Extract price in yuan
-    const priceYuan = parseFloat(item.price || item.current_price || item.priceText || 0);
-    // Convert yuan to euros (approximate rate)
-    const EUR_RATE = 0.13;
-    const priceEur = priceYuan > 0 ? (priceYuan * EUR_RATE).toFixed(2) : '';
+    // Try to find price in various locations
+    const rawPrice =
+      item?.price ||
+      item?.current_price ||
+      item?.original_price ||
+      item?.sale_price ||
+      item?.priceText ||
+      item?.promotion_price ||
+      data?.result?.price;
 
-    // Fill in the form
-    if(imgUrl) {
-      // Set as external image URL directly
-      currentImgUrl = imgUrl.startsWith('//') ? 'https:'+imgUrl : imgUrl;
-      document.getElementById('img-prev').src = currentImgUrl;
-      document.getElementById('img-prev').style.display = 'block';
-      document.getElementById('img-ph').style.display = 'none';
-      document.getElementById('img-zone').classList.add('filled');
-    }
-
-    if(priceEur) {
-      document.getElementById('f-buy-price').value = priceEur;
-      calcPrice();
-    }
+    const imgOk = setImage(rawImg);
+    const priceEur = setPrice(rawPrice);
 
     // Fill supplier link
-    document.getElementById('f-link').value = url;
+    const linkField = document.getElementById('f-link');
+    if(linkField) linkField.value = url;
 
-    status.textContent = `✅ Importé ! Photo + prix (${priceEur}€) récupérés. Ajoute le nom toi-même.`;
-    status.className = 'taobao-status ok';
-    urlInput.value = '';
-    document.getElementById('f-name').focus();
+    if(!imgOk && !priceEur) {
+      status.textContent = '⚠️ API connectée mais données introuvables. Remplis manuellement.';
+      status.className = 'taobao-status err';
+    } else {
+      let msg = '✅ Importé ! ';
+      if(imgOk) msg += 'Photo ✓ ';
+      if(priceEur) msg += `Prix ${priceEur}€ ✓ `;
+      msg += '— Tape le nom toi-même.';
+      status.textContent = msg;
+      status.className = 'taobao-status ok';
+      urlInput.value = '';
+      document.getElementById('f-name')?.focus();
+    }
 
   } catch(e) {
-    console.error(e);
-    status.textContent = '❌ Erreur : ' + (e.message || 'Impossible de récupérer les données');
+    console.error('Taobao import error:', e);
+    // Fallback: at least fill the supplier link
+    const linkField = document.getElementById('f-link');
+    if(linkField) linkField.value = url;
+    status.textContent = '❌ ' + (e.message.includes('HTTP 4') ? 'Clé API invalide ou quota dépassé — vérifie RapidAPI.' : 'Impossible de récupérer les données. Lien fournisseur rempli quand même.');
     status.className = 'taobao-status err';
   }
 };
