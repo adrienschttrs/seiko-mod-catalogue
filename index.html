@@ -3,28 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Seiko Mod — Catalogue</title>
+<title>Seiko Mod — Catalogue Admin</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-const firebaseConfig = {
+const CLOUDINARY_CLOUD  = 'dsdbkj5nf';
+const CLOUDINARY_PRESET = 'seiko_mod_unsigned';
+
+const app = initializeApp({
   apiKey:"AIzaSyBXdDBq6H0ngwoCKDXN7iW9bcqJ5AVD7Wc",
   authDomain:"seiko-mod-catalogue.firebaseapp.com",
   projectId:"seiko-mod-catalogue",
   storageBucket:"seiko-mod-catalogue.firebasestorage.app",
   messagingSenderId:"1042287332555",
   appId:"1:1042287332555:web:6b25cc4a0dc53c38ec9f4e"
-};
-const CLOUDINARY_CLOUD = 'dsdbkj5nf';
-const CLOUDINARY_PRESET = 'seiko_mod_unsigned';
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+});
+const db = getFirestore(app);
 
-// ─── DEFINITIONS ──────────────────────────────────────────────────────────────
-const DEFS = [
-  { id:'bracelet', label:'Bracelet / Case', icon:'⌚', desc:'Boîtiers · Bracelets · Lunettes · Couronnes', brands:[
+// ─── DEFAULTS ─────────────────────────────────────────────────────────────────
+const DEFAULT_DEFS = [
+  { id:'bracelet', label:'Bracelet / Case', icon:'⌚', desc:'Boîtiers · Bracelets · Lunettes · Couronnes', hasSizes:true, brands:[
     {name:'Rolex Style',     models:['GMT-Master','Datejust','Submariner','Explorer','Daytona','Oyster Perpetual']},
     {name:'Cartier Style',   models:['Santos','Tank','Ballon Bleu','Panthère']},
     {name:'Patek Philippe',  models:['Nautilus','Aquanaut','Calatrava']},
@@ -32,7 +32,7 @@ const DEFS = [
     {name:'Tissot Style',    models:['PRX','Le Locle','T-Race']},
     {name:'Générique',       models:['Mesh Milanais','NATO','Cuir','Rubber','Jubilée']},
   ]},
-  { id:'cadran', label:'Cadran', icon:'🕐', desc:'Cadrans · Marqueurs · Indices · Textes', brands:[
+  { id:'cadran', label:'Cadran', icon:'🕐', desc:'Cadrans · Marqueurs · Indices · Textes', hasSizes:false, brands:[
     {name:'Rolex Style',     models:['GMT-Master','Datejust','Submariner','Explorer','Daytona']},
     {name:'Cartier Style',   models:['Santos','Tank']},
     {name:'Patek Philippe',  models:['Nautilus','Aquanaut']},
@@ -40,7 +40,7 @@ const DEFS = [
     {name:'Tissot Style',    models:['PRX']},
     {name:'Générique',       models:['Sunburst','Soleillé','Texturé','Uni']},
   ]},
-  { id:'aiguille', label:'Aiguilles', icon:'🧭', desc:'Heures · Minutes · Secondes · GMT', brands:[
+  { id:'aiguille', label:'Aiguilles', icon:'🧭', desc:'Heures · Minutes · Secondes · GMT', hasSizes:false, brands:[
     {name:'Rolex Style',     models:['Mercedes','Alpha','Sword','Baton']},
     {name:'Cartier Style',   models:['Épée','Flèche']},
     {name:'Patek Philippe',  models:['Feuille','Bâton']},
@@ -48,14 +48,14 @@ const DEFS = [
     {name:'Tissot Style',    models:['PRX']},
     {name:'Générique',       models:['Stick','Leaf','Cathedral','Dauphine']},
   ]},
-  { id:'mouvement', label:'Mouvements Seiko', icon:'⚙️', desc:'Calibres officiels Seiko', brands:[
+  { id:'mouvement', label:'Mouvements Seiko', icon:'⚙️', desc:'Calibres officiels Seiko', hasSizes:false, brands:[
     {name:'Série NH',    models:['NH35A','NH36A','NH34','NH38','NH70','NH72']},
     {name:'Série 4R',    models:['4R35','4R36','4R57','4R68']},
     {name:'Série 6R',    models:['6R15','6R27','6R35','6R55']},
     {name:'Série NE',    models:['NE15','NE57','NE88']},
     {name:'Série VK/VH', models:['VK63','VK64','VH31','VH32']},
   ]},
-  { id:'complete', label:'Montres Complètes', icon:'✨', desc:'Builds complets · Montres finalisées', brands:[
+  { id:'complete', label:'Montres Complètes', icon:'✨', desc:'Builds complets · Montres finalisées', hasSizes:true, brands:[
     {name:'Rolex Style',     models:['GMT-Master','Datejust','Submariner','Explorer','Daytona']},
     {name:'Cartier Style',   models:['Santos','Tank']},
     {name:'Patek Philippe',  models:['Nautilus','Aquanaut']},
@@ -63,39 +63,43 @@ const DEFS = [
     {name:'Tissot Style',    models:['PRX']},
     {name:'Original Build',  models:['Custom']},
   ]},
-  { id:'accessoire', label:'Accessoires', icon:'🎁', desc:'Boîtes de voyage · Rangement · Étuis · Entretien', brands:[
-    {name:'Boîtes de voyage',  models:['1 montre','2 montres','3 montres','4 montres +']},
+  { id:'accessoire', label:'Accessoires', icon:'🎁', desc:'Boîtes de voyage · Rangement · Étuis · Entretien', hasSizes:false, brands:[
+    {name:'Boîtes de voyage',    models:['1 montre','2 montres','3 montres','4 montres +']},
     {name:'Boîtes de rangement', models:['Coffret bois','Coffret cuir','Coffret acrylique']},
-    {name:'Étuis & Protection', models:['Étui souple','Étui rigide','Pochette']},
-    {name:'Entretien',         models:['Outils','Nettoyage','Piles & Batteries']},
+    {name:'Étuis & Protection',  models:['Étui souple','Étui rigide','Pochette']},
+    {name:'Entretien',           models:['Outils','Nettoyage','Piles & Batteries']},
   ]},
 ];
-const ORIG_DEFS = JSON.parse(JSON.stringify(DEFS));
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
+// ─── STATE ─────────────────────────────────────────────────────────────────────
+let DEFS = JSON.parse(JSON.stringify(DEFAULT_DEFS));
 let parts = [], editingId=null, addCtx=null, currentImgUrl=null, customCtx=null, uploadingImg=false;
-let activeSection='bracelet', activeBrand=null, activeModel=null;
-let searchQ='', filterStock='all', sortBy='name';
+let activeSection='bracelet', activeBrand=null, activeModel=null, activeView='catalogue';
+let searchQ='', sortBy='name';
 
-// ─── FIRESTORE ────────────────────────────────────────────────────────────────
+// ─── FIRESTORE LISTENERS ──────────────────────────────────────────────────────
 function startListeners() {
   onSnapshot(query(collection(db,'parts'),orderBy('ts','desc')), snap => {
     parts = snap.docs.map(d=>({id:d.id,...d.data()}));
-    render();
+    renderAll();
   }, e=>console.error(e));
 
   onSnapshot(collection(db,'customBrands'), snap => {
-    // reset to orig before re-injecting
-    ORIG_DEFS.forEach((os,i)=>{ DEFS[i].brands = JSON.parse(JSON.stringify(os.brands)); });
+    DEFS = JSON.parse(JSON.stringify(DEFAULT_DEFS));
     snap.docs.forEach(d=>{
       const dat=d.data(), sec=DEFS.find(s=>s.id===dat.sid);
-      if (!sec) return;
+      if(!sec) return;
       let b=sec.brands.find(x=>x.name===dat.brand);
-      if (!b){b={name:dat.brand,models:[]};sec.brands.push(b);}
-      dat.models.forEach(m=>{if(!b.models.includes(m))b.models.push(m);});
+      if(!b){b={name:dat.brand,models:[]};sec.brands.push(b);}
+      (dat.models||[]).forEach(m=>{if(!b.models.includes(m))b.models.push(m);});
     });
-    render();
+    renderAll();
   }, e=>console.error(e));
+}
+
+function renderAll() {
+  if(activeView==='catalogue') render();
+  if(activeView==='settings') renderSettings();
 }
 
 // ─── CLOUDINARY ───────────────────────────────────────────────────────────────
@@ -107,51 +111,24 @@ async function uploadToCloudinary(file) {
   return (await res.json()).secure_url;
 }
 
-// ─── CALCULATRICE PRIX ────────────────────────────────────────────────────────
-window.calcPrice = function() {
-  const achat   = parseFloat(document.getElementById('f-buy-price').value)  || 0;
-  const ship_in = parseFloat(document.getElementById('calc-ship-in').value) || 8;
-  const labor   = parseFloat(document.getElementById('calc-labor').value)   || 37;
-  const ship_out= parseFloat(document.getElementById('calc-ship-out').value)|| 5;
-  const marge   = parseFloat(document.getElementById('calc-marge').value)   || 1.73;
-  const vinted  = document.getElementById('calc-vinted').checked;
-
-  const coutTotal = achat + ship_in + labor + ship_out;
-  let prixSuggere = coutTotal * marge;
-  if(vinted) prixSuggere = (prixSuggere + 0.70) / (1 - 0.05);
-  const benefice = prixSuggere - coutTotal;
-  const margeNet = coutTotal > 0 ? ((benefice / prixSuggere) * 100).toFixed(0) : 0;
-
-  document.getElementById('calc-cout').textContent     = coutTotal.toFixed(2) + '€';
-  document.getElementById('calc-benefice').textContent = benefice.toFixed(2) + '€';
-  document.getElementById('calc-marge-pct').textContent= margeNet + '%';
-  document.getElementById('calc-result').textContent   = prixSuggere.toFixed(2) + '€';
-  document.getElementById('calc-marge-val').textContent= marge.toFixed(1) + 'x';
-
-  if(achat > 0) document.getElementById('f-price').value = prixSuggere.toFixed(2);
-};
-
-window.applyCalcPrice = function() {
-  const v = document.getElementById('calc-result').textContent;
-  document.getElementById('f-price').value = parseFloat(v).toFixed(2);
-  toast('Prix de vente appliqué ✓');
-};
-
-// ─── SAVE/DELETE PART ─────────────────────────────────────────────────────────
+// ─── SAVE PART ────────────────────────────────────────────────────────────────
 window.savePart = async function() {
   const name=document.getElementById('f-name').value.trim();
   if(!name){toast('Nom obligatoire',true);return;}
   if(uploadingImg){toast('Upload en cours…',true);return;}
-  const p={sid:addCtx.sid,brand:addCtx.brand,model:addCtx.model,name,
-    buyPrice: document.getElementById('f-buy-price').value||'',
+  const sec=DEFS.find(s=>s.id===addCtx.sid);
+  const isComplete=addCtx.sid==='complete';
+  const hasSizes=sec?.hasSizes||false;
+  const p={
+    sid:addCtx.sid, brand:addCtx.brand, model:addCtx.model, name,
+    sizes:    hasSizes?(document.getElementById('f-sizes')?.value||''):'',
+    buyPrice: document.getElementById('f-buy-price')?.value||'',
     price:    document.getElementById('f-price').value||'',
-    
-    sizes:    document.getElementById('f-sizes').value||'',
-    
     link:     document.getElementById('f-link').value||'',
     notes:    document.getElementById('f-notes').value||'',
     stock:    document.getElementById('f-stock').value||'stock',
-    img:currentImgUrl||'', ts:Date.now()};
+    img:currentImgUrl||'', ts:Date.now()
+  };
   try{
     setSaveBtn(true);
     if(editingId){await updateDoc(doc(db,'parts',editingId),p);toast('Pièce modifiée ✓');}
@@ -169,25 +146,43 @@ window.deletePart = async function(id) {
 
 window.duplicatePart = async function(id) {
   const p=parts.find(x=>x.id===id); if(!p) return;
-  const {id:_,...data}=p;
-  await addDoc(collection(db,'parts'),{...data, name:data.name+' (copie)', ts:Date.now()});
-  closeModal('detail-modal');
-  toast('Pièce dupliquée ✓');
+  const{id:_,...data}=p;
+  await addDoc(collection(db,'parts'),{...data,name:data.name+' (copie)',ts:Date.now()});
+  closeModal('detail-modal'); toast('Pièce dupliquée ✓');
 };
 
+// ─── CALCULATOR ───────────────────────────────────────────────────────────────
+window.calcPrice = function() {
+  const achat    = parseFloat(document.getElementById('f-buy-price')?.value)||0;
+  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||8;
+  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||37;
+  const ship_out = parseFloat(document.getElementById('calc-ship-out')?.value)||5;
+  const marge    = parseFloat(document.getElementById('calc-marge')?.value)||1.73;
+  const vinted   = document.getElementById('calc-vinted')?.checked;
+  const cout = achat+ship_in+labor+ship_out;
+  let prix = cout*marge;
+  if(vinted) prix=(prix+0.70)/(1-0.05);
+  const benef=prix-cout, pct=cout>0?((benef/prix)*100).toFixed(0):0;
+  document.getElementById('calc-cout').textContent=cout.toFixed(2)+'€';
+  document.getElementById('calc-benefice').textContent=benef.toFixed(2)+'€';
+  document.getElementById('calc-marge-pct').textContent=pct+'%';
+  document.getElementById('calc-result').textContent=prix.toFixed(2)+'€';
+  document.getElementById('calc-marge-val').textContent=marge.toFixed(1)+'x';
+  if(achat>0) document.getElementById('f-price').value=prix.toFixed(2);
+};
+window.applyCalcPrice = function() {
+  const v=document.getElementById('calc-result').textContent;
+  document.getElementById('f-price').value=parseFloat(v).toFixed(2);
+  toast('Prix appliqué ✓');
+};
+
+// ─── DELETE BRAND/MODEL ───────────────────────────────────────────────────────
 window.deleteModel = async function(sid,brand,model) {
   const cnt=parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model).length;
   if(!confirm(`Supprimer "${model}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
-  for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model))
-    await deleteDoc(doc(db,'parts',p.id));
+  for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model)) await deleteDoc(doc(db,'parts',p.id));
   const snap=await getDocs(collection(db,'customBrands'));
-  for(const d of snap.docs){
-    const dat=d.data();
-    if(dat.sid===sid&&dat.brand===brand&&dat.models.includes(model)){
-      const nm=dat.models.filter(m=>m!==model);
-      nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));
-    }
-  }
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand&&dat.models?.includes(model)){const nm=dat.models.filter(m=>m!==model);nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));}}
   const b=DEFS.find(s=>s.id===sid)?.brands.find(x=>x.name===brand);
   if(b) b.models=b.models.filter(m=>m!==model);
   if(activeModel===model) activeModel=null;
@@ -197,26 +192,24 @@ window.deleteModel = async function(sid,brand,model) {
 window.deleteBrand = async function(sid,brand) {
   const cnt=parts.filter(p=>p.sid===sid&&p.brand===brand).length;
   if(!confirm(`Supprimer "${brand}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
-  for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand))
-    await deleteDoc(doc(db,'parts',p.id));
+  for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand)) await deleteDoc(doc(db,'parts',p.id));
   const snap=await getDocs(collection(db,'customBrands'));
   for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand)await deleteDoc(doc(db,'customBrands',d.id));}
-  const sec=DEFS.find(s=>s.id===sid);
-  if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
+  const sec=DEFS.find(s=>s.id===sid); if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
   if(activeBrand===brand){activeBrand=null;activeModel=null;}
   toast(`"${brand}" supprimée`); render();
 };
 
+// ─── CUSTOM BRAND/MODEL ───────────────────────────────────────────────────────
 window.saveCustom = async function() {
   const val=document.getElementById('custom-inp').value.trim(); if(!val) return;
   const ctx=customCtx, sec=DEFS.find(s=>s.id===ctx.sid);
   try{
     if(ctx.type==='brand'){
-      if(sec.brands.find(b=>b.name===val)){toast('Marque déjà existante',true);return;}
+      if(sec.brands.find(b=>b.name===val)){toast('Déjà existant',true);return;}
       await addDoc(collection(db,'customBrands'),{sid:ctx.sid,brand:val,models:[]});
       toast(`"${val}" ajoutée ✓`);
     } else {
-      if(!sec.brands.find(x=>x.name===ctx.brand)?.models.includes(val)===false){toast('Modèle déjà existant',true);return;}
       await addDoc(collection(db,'customBrands'),{sid:ctx.sid,brand:ctx.brand,models:[val]});
       toast(`"${val}" ajouté ✓`);
     }
@@ -224,7 +217,59 @@ window.saveCustom = async function() {
   }catch(e){toast('Erreur : '+e.message,true);}
 };
 
-// ─── IMG ──────────────────────────────────────────────────────────────────────
+// ─── RENAME (Settings) ───────────────────────────────────────────────────────
+window.saveRename = async function() {
+  const type=document.getElementById('rename-type').value;
+  const newName=document.getElementById('rename-inp').value.trim();
+  if(!newName){toast('Nom obligatoire',true);return;}
+  const ctx=window._renameCtx;
+  try{
+    if(type==='section'){
+      // update label in DEFS locally (section ids stay same, only label changes)
+      const sec=DEFS.find(s=>s.id===ctx.sid);
+      if(sec) sec.label=newName;
+      // Store in Firestore settings
+      await setDoc(doc(db,'settings','sectionLabels'),{[ctx.sid]:newName},{merge:true});
+      toast(`Section renommée en "${newName}" ✓`);
+    } else if(type==='brand'){
+      // Rename all parts with old brand name
+      const toUpdate=parts.filter(p=>p.sid===ctx.sid&&p.brand===ctx.brand);
+      for(const p of toUpdate) await updateDoc(doc(db,'parts',p.id),{brand:newName});
+      // Update customBrands
+      const snap=await getDocs(collection(db,'customBrands'));
+      for(const d of snap.docs){const dat=d.data();if(dat.sid===ctx.sid&&dat.brand===ctx.brand)await updateDoc(doc(db,'customBrands',d.id),{brand:newName});}
+      const sec=DEFS.find(s=>s.id===ctx.sid); const b=sec?.brands.find(x=>x.name===ctx.brand);
+      if(b) b.name=newName;
+      if(activeBrand===ctx.brand) activeBrand=newName;
+      toast(`Marque renommée en "${newName}" ✓`);
+    } else if(type==='model'){
+      const toUpdate=parts.filter(p=>p.sid===ctx.sid&&p.brand===ctx.brand&&p.model===ctx.model);
+      for(const p of toUpdate) await updateDoc(doc(db,'parts',p.id),{model:newName});
+      const snap=await getDocs(collection(db,'customBrands'));
+      for(const d of snap.docs){const dat=d.data();if(dat.sid===ctx.sid&&dat.brand===ctx.brand&&dat.models?.includes(ctx.model)){const nm=dat.models.map(m=>m===ctx.model?newName:m);await updateDoc(doc(db,'customBrands',d.id),{models:nm});}}
+      const b=DEFS.find(s=>s.id===ctx.sid)?.brands.find(x=>x.name===ctx.brand);
+      if(b) b.models=b.models.map(m=>m===ctx.model?newName:m);
+      if(activeModel===ctx.model) activeModel=newName;
+      toast(`Modèle renommé en "${newName}" ✓`);
+    }
+    closeModal('rename-modal'); render();
+  }catch(e){toast('Erreur : '+e.message,true);}
+};
+
+// Load section label overrides from Firestore on init
+async function loadSectionLabels(){
+  try{
+    const snap=await getDocs(collection(db,'settings'));
+    snap.docs.forEach(d=>{
+      if(d.id==='sectionLabels'){
+        const data=d.data();
+        Object.keys(data).forEach(sid=>{const sec=DEFS.find(s=>s.id===sid);if(sec)sec.label=data[sid];});
+      }
+    });
+  }catch(e){}
+}
+
+// ─── IMAGE ────────────────────────────────────────────────────────────────────
 window.handleImg = async function(input) {
   const file=input.files[0]; if(!file) return;
   uploadingImg=true; setImgLoading(true);
@@ -235,181 +280,135 @@ window.handleImg = async function(input) {
     document.getElementById('img-ph').style.display='none';
     document.getElementById('img-zone').classList.add('filled');
     toast('Photo uploadée ✓');
-  }catch(e){toast('Erreur upload',true);console.error(e);}
+  }catch(e){toast('Erreur upload',true);}
   finally{uploadingImg=false;setImgLoading(false);}
 };
 function setImgLoading(on){
   document.getElementById('img-ph').innerHTML=on
     ?'<div class="spinner"></div><div class="img-hint">Upload…</div>'
-    :'<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg><div class="img-hint">Cliquer pour ajouter</div>';
+    :'<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--text3)"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg><div class="img-hint">Cliquer pour ajouter</div>';
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
-window.setSection  = function(id){activeSection=id;activeBrand=null;activeModel=null;searchQ='';filterStock='all';render();}
-window.setBrand    = function(b){activeBrand=b;activeModel=null;searchQ='';filterStock='all';render();}
-window.setModel    = function(m){activeModel=m;searchQ='';filterStock='all';render();}
-window.goBack      = function(){if(activeModel){activeModel=null;}else if(activeBrand){activeBrand=null;}render();}
+window.setSection  = s=>{activeSection=s;activeBrand=null;activeModel=null;searchQ='';render();}
+window.setBrand    = b=>{activeBrand=b;activeModel=null;searchQ='';render();}
+window.setModel    = m=>{activeModel=m;searchQ='';render();}
+window.goBack      = ()=>{if(activeModel)activeModel=null;else if(activeBrand)activeBrand=null;render();}
+window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();
+  document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+}
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function render(){
   renderHeader();
-  if(!activeBrand)       renderBrandList();
-  else if(!activeModel)  renderModelList();
-  else                   renderPartGrid();
+  if(!activeBrand)      renderBrandList();
+  else if(!activeModel) renderModelList();
+  else                  renderPartGrid();
 }
 
 function renderHeader(){
   const sec=DEFS.find(s=>s.id===activeSection);
   const total=parts.length, val=parts.reduce((a,p)=>a+(parseFloat(p.price)||0),0);
-  // Tabs
+  document.getElementById('hdr-total').textContent=total;
+  document.getElementById('hdr-val').textContent=val.toFixed(2)+'€';
   document.getElementById('nav-tabs').innerHTML=DEFS.map(s=>{
     const cnt=parts.filter(p=>p.sid===s.id).length;
     return `<button class="nav-tab${activeSection===s.id?' active':''}" onclick="setSection('${s.id}')">
       <span>${s.icon}</span><span class="tab-lbl">${s.label}</span>${cnt?`<span class="tab-cnt">${cnt}</span>`:''}
     </button>`;
   }).join('');
-  // Stats
-  document.getElementById('hdr-total').textContent=total;
-  document.getElementById('hdr-val').textContent=val.toFixed(2)+'€';
-  // Breadcrumb
-  let bc=`<span class="bc-item active">${sec.label}</span>`;
-  if(activeBrand) bc+=`<span class="bc-sep">›</span><span class="bc-item active">${activeBrand}</span>`;
-  if(activeModel) bc+=`<span class="bc-sep">›</span><span class="bc-item active">${activeModel}</span>`;
+  let bc=`<span class="bc-item">${sec.label}</span>`;
+  if(activeBrand) bc+=`<span class="bc-sep">›</span><span class="bc-item">${activeBrand}</span>`;
+  if(activeModel) bc+=`<span class="bc-sep">›</span><span class="bc-item">${activeModel}</span>`;
   document.getElementById('breadcrumb').innerHTML=bc;
-  // Back button
-  document.getElementById('back-btn').style.display=(activeBrand?'flex':'none');
+  document.getElementById('back-btn').style.display=activeBrand?'flex':'none';
 }
 
-// LEVEL 1 — Brand tiles
+// ─── BRAND TILES ──────────────────────────────────────────────────────────────
 function renderBrandList(){
   const sec=DEFS.find(s=>s.id===activeSection);
-  let h=`<div class="level-header">
-    <div>
-      <h2 class="level-title">${sec.icon} ${sec.label}</h2>
-      <p class="level-sub">${sec.desc}</p>
+  document.getElementById('main').innerHTML=`
+    <div class="level-header">
+      <div><h2 class="level-title">${sec.icon} ${sec.label}</h2><p class="level-sub">${sec.desc}</p></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline sm" onclick="openRenameSection('${sec.id}','${esc(sec.label)}')">✎ Renommer</button>
+        <button class="btn-gold" onclick="openAddBrand('${sec.id}')">+ Marque</button>
+      </div>
     </div>
-    <button class="btn-gold" onclick="openAddBrand('${sec.id}')">+ Marque</button>
-  </div>
-  <div class="tile-grid">`;
-
-  sec.brands.forEach(brand=>{
-    const cnt=parts.filter(p=>p.sid===sec.id&&p.brand===brand.name).length;
-    // pick first part image as brand cover
-    const cover=parts.find(p=>p.sid===sec.id&&p.brand===brand.name&&p.img);
-    h+=`<div class="brand-tile" onclick="setBrand('${esc(brand.name)}')">
-      <div class="tile-cover">${cover?`<img src="${cover.img}" loading="lazy">`:`<span class="tile-icon">${sec.icon}</span>`}</div>
-      <div class="tile-body">
-        <div class="tile-name">${brand.name}</div>
-        <div class="tile-meta">${brand.models.length} modèle${brand.models.length>1?'s':''} · ${cnt} pièce${cnt!==1?'s':''}</div>
-      </div>
-      <div class="tile-actions" onclick="event.stopPropagation()">
-        <button class="tile-act-btn" onclick="openAddModel('${sec.id}','${esc(brand.name)}')" title="Ajouter un modèle">+</button>
-        <button class="tile-act-btn del" onclick="deleteBrand('${sec.id}','${esc(brand.name)}')" title="Supprimer">✕</button>
-      </div>
-    </div>`;
-  });
-  h+=`</div>`;
-  document.getElementById('main').innerHTML=h;
+    <div class="tile-grid">${sec.brands.map(brand=>{
+      const cnt=parts.filter(p=>p.sid===sec.id&&p.brand===brand.name).length;
+      const cover=parts.find(p=>p.sid===sec.id&&p.brand===brand.name&&p.img);
+      return `<div class="brand-tile" onclick="setBrand('${esc(brand.name)}')">
+        <div class="tile-cover">${cover?`<img src="${cover.img}" loading="lazy">`:`<span class="tile-icon">${sec.icon}</span>`}</div>
+        <div class="tile-body"><div class="tile-name">${brand.name}</div><div class="tile-meta">${brand.models.length} modèle${brand.models.length>1?'s':''} · ${cnt} pièce${cnt!==1?'s':''}</div></div>
+        <div class="tile-actions" onclick="event.stopPropagation()">
+          <button class="tile-act-btn" onclick="openRenameItem('brand','${sec.id}','${esc(brand.name)}')" title="Renommer">✎</button>
+          <button class="tile-act-btn" onclick="openAddModel('${sec.id}','${esc(brand.name)}')" title="Ajouter un modèle">+</button>
+          <button class="tile-act-btn del" onclick="deleteBrand('${sec.id}','${esc(brand.name)}')" title="Supprimer">✕</button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
 }
 
-// LEVEL 2 — Model tiles
+// ─── MODEL TILES ──────────────────────────────────────────────────────────────
 function renderModelList(){
   const sec=DEFS.find(s=>s.id===activeSection);
   const brand=sec.brands.find(b=>b.name===activeBrand);
   if(!brand){activeBrand=null;render();return;}
-
-  let h=`<div class="level-header">
-    <div>
-      <h2 class="level-title">${activeBrand}</h2>
-      <p class="level-sub">${sec.label} · ${brand.models.length} modèle${brand.models.length>1?'s':''}</p>
+  document.getElementById('main').innerHTML=`
+    <div class="level-header">
+      <div><h2 class="level-title">${activeBrand}</h2><p class="level-sub">${sec.label} · ${brand.models.length} modèle${brand.models.length>1?'s':''}</p></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline sm" onclick="openRenameItem('brand','${sec.id}','${esc(activeBrand)}')">✎ Renommer</button>
+        <button class="btn-gold" onclick="openAddModel('${sec.id}','${esc(activeBrand)}')">+ Modèle</button>
+      </div>
     </div>
-    <button class="btn-gold" onclick="openAddModel('${sec.id}','${esc(activeBrand)}')">+ Modèle</button>
-  </div>
-  <div class="tile-grid">`;
-
-  brand.models.forEach(model=>{
-    const mParts=parts.filter(p=>p.sid===sec.id&&p.brand===activeBrand&&p.model===model);
-    const cover=mParts.find(p=>p.img);
-    h+=`<div class="brand-tile" onclick="setModel('${esc(model)}')">
-      <div class="tile-cover">${cover?`<img src="${cover.img}" loading="lazy">`:`<span class="tile-icon">${sec.icon}</span>`}</div>
-      <div class="tile-body">
-        <div class="tile-name">${model}</div>
-        <div class="tile-meta">${mParts.length} pièce${mParts.length!==1?'s':''}</div>
-      </div>
-      <div class="tile-actions" onclick="event.stopPropagation()">
-        <button class="tile-act-btn" onclick="openAddPart('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Ajouter une pièce">+</button>
-        <button class="tile-act-btn del" onclick="deleteModel('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Supprimer">✕</button>
-      </div>
-    </div>`;
-  });
-  h+=`</div>`;
-  document.getElementById('main').innerHTML=h;
+    <div class="tile-grid">${brand.models.map(model=>{
+      const mParts=parts.filter(p=>p.sid===sec.id&&p.brand===activeBrand&&p.model===model);
+      const cover=mParts.find(p=>p.img);
+      return `<div class="brand-tile" onclick="setModel('${esc(model)}')">
+        <div class="tile-cover">${cover?`<img src="${cover.img}" loading="lazy">`:`<span class="tile-icon">${sec.icon}</span>`}</div>
+        <div class="tile-body"><div class="tile-name">${model}</div><div class="tile-meta">${mParts.length} pièce${mParts.length!==1?'s':''}</div></div>
+        <div class="tile-actions" onclick="event.stopPropagation()">
+          <button class="tile-act-btn" onclick="openRenameItem('model','${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Renommer">✎</button>
+          <button class="tile-act-btn" onclick="openAddPart('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Ajouter">+</button>
+          <button class="tile-act-btn del" onclick="deleteModel('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Supprimer">✕</button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
 }
 
-// LEVEL 3 — Product grid
+// ─── PART GRID ────────────────────────────────────────────────────────────────
 function renderPartGrid(){
   const sec=DEFS.find(s=>s.id===activeSection);
-
-  // Build toolbar only (stable DOM — never recreated)
-  const main=document.getElementById('main');
-  main.innerHTML=`<div class="grid-toolbar">
-    <div class="grid-toolbar-left">
-      <div class="search-wrap">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="search-inp" id="search-inp" type="text" placeholder="Rechercher…" oninput="onSearch(this.value)">
-        <button class="search-clear" id="search-clear-btn" style="display:none" onclick="clearSearch()">✕</button>
+  document.getElementById('main').innerHTML=`
+    <div class="grid-toolbar">
+      <div class="grid-toolbar-left">
+        <div class="search-wrap">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="search-inp" id="search-inp" type="text" placeholder="Rechercher…" oninput="onSearch(this.value)">
+          <button class="search-clear" id="search-clear-btn" style="display:none" onclick="clearSearch()">✕</button>
+        </div>
+        <span class="grid-count" id="grid-count-el"></span>
       </div>
-      <span class="grid-count" id="grid-count-el"></span>
+      <div class="grid-toolbar-right">
+        <select class="filter-sel" onchange="onSort(this.value)">
+          <option value="name">Nom A→Z</option>
+          <option value="price-asc">Prix croissant</option>
+          <option value="price-desc">Prix décroissant</option>
+          <option value="date">Plus récents</option>
+        </select>
+        <button class="btn-gold sm" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Pièce</button>
+      </div>
     </div>
-    <div class="grid-toolbar-right">
-      <select class="filter-sel" onchange="onFilterStock(this.value)">
-        <option value="all">Tout le stock</option>
-        <option value="stock">En stock</option>
-        <option value="commande">En commande</option>
-        <option value="rupture">Rupture</option>
-      </select>
-      <select class="filter-sel" onchange="onSort(this.value)">
-        <option value="name">Nom A→Z</option>
-        <option value="price-asc">Prix croissant</option>
-        <option value="price-desc">Prix décroissant</option>
-        <option value="date">Plus récents</option>
-      </select>
-      <button class="btn-gold sm" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Pièce</button>
-    </div>
-  </div>
-  <div id="grid-results"></div>`;
-
-  // Restore filter/sort state
-  main.querySelectorAll('.filter-sel')[0].value=filterStock;
-  main.querySelectorAll('.filter-sel')[1].value=sortBy;
-
-  // Render results (without touching toolbar)
+    <div id="grid-results"></div>`;
   renderGridOnly();
 }
-
-window.clearSearch = function(){
-  searchQ='';
-  const inp=document.getElementById('search-inp');
-  if(inp) inp.value='';
-  const btn=document.getElementById('search-clear-btn');
-  if(btn) btn.style.display='none';
-  renderGridOnly();
-};
-
-window.onSearch = function(v){
-  searchQ=v;
-  const btn=document.getElementById('search-clear-btn');
-  if(btn) btn.style.display=v?'block':'none';
-  renderGridOnly();
-};
-window.onFilterStock = function(v){filterStock=v;renderGridOnly();}
-window.onSort        = function(v){sortBy=v;renderGridOnly();}
 
 function renderGridOnly(){
   const sec=DEFS.find(s=>s.id===activeSection);
   let filtered=parts.filter(p=>p.sid===activeSection&&p.brand===activeBrand&&p.model===activeModel);
-  if(searchQ){const q=searchQ.toLowerCase();filtered=filtered.filter(p=>p.name.toLowerCase().includes(q)||(p.sku||'').toLowerCase().includes(q)||(p.notes||'').toLowerCase().includes(q)||(p.compat||'').toLowerCase().includes(q));}
-  if(filterStock!=='all') filtered=filtered.filter(p=>(p.stock||'stock')===filterStock);
+  if(searchQ){const q=searchQ.toLowerCase();filtered=filtered.filter(p=>p.name.toLowerCase().includes(q)||(p.notes||'').toLowerCase().includes(q));}
   filtered.sort((a,b)=>{
     if(sortBy==='price-asc') return (parseFloat(a.price)||0)-(parseFloat(b.price)||0);
     if(sortBy==='price-desc') return (parseFloat(b.price)||0)-(parseFloat(a.price)||0);
@@ -418,59 +417,89 @@ function renderGridOnly(){
   });
   const cnt=document.getElementById('grid-count-el');
   if(cnt) cnt.textContent=`${filtered.length} résultat${filtered.length!==1?'s':''}`;
-  const grid=document.getElementById('grid-results');
-  if(!grid) return;
-  if(filtered.length===0){
-    grid.innerHTML=`<div class="empty-state">
-      <div class="empty-icon">${sec.icon}</div>
-      <div class="empty-title">${searchQ||filterStock!=='all'?'Aucun résultat':'Aucune pièce'}</div>
-      <p class="empty-sub">${searchQ||filterStock!=='all'?'Modifiez vos filtres':'Ajoutez votre première pièce'}</p>
-      ${(!searchQ&&filterStock==='all')?`<button class="btn-gold" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Ajouter une pièce</button>`:''}
-    </div>`;
-  } else {
-    let h=`<div class="product-grid">`;
-    filtered.forEach(p=>{
-      const sc=p.stock==='rupture'?'red':p.stock==='commande'?'amber':p.stock==='vendu'?'purple':'green';
-      const sl=p.stock==='rupture'?'Rupture':p.stock==='commande'?'Commande':p.stock==='vendu'?'Vendu':'En stock';
-      h+=`<div class="product-card${p.stock==='vendu'?' sold':''}" onclick="openDetail('${p.id}')">
-        <div class="product-img">${p.img
-          ?`<img src="${p.img}" loading="lazy">`
-          :`<div class="product-placeholder"><span style="font-size:28px;opacity:.15">${sec.icon}</span><div class="placeholder-name">${p.name}</div></div>`}
-          ${p.stock==='vendu'?'<div class="sold-overlay">VENDU</div>':''}
-        </div>
-        <div class="product-body">
-          <div class="product-name">${p.name}</div>
-          ${p.sizes?`<div class="product-sku">${p.sizes}</div>`:''}
-          <div class="product-footer">
-            ${p.price?`<div class="product-price">${parseFloat(p.price).toFixed(2)}€</div>`:'<div></div>'}
-            <span class="stock-dot ${sc}" title="${sl}"></span>
-          </div>
-        </div>
-      </div>`;
-    });
-    h+=`</div>`;
-    grid.innerHTML=h;
+  const grid=document.getElementById('grid-results'); if(!grid) return;
+  if(!filtered.length){
+    grid.innerHTML=`<div class="empty-state"><div class="empty-icon">${sec.icon}</div><div class="empty-title">${searchQ?'Aucun résultat':'Aucune pièce'}</div><p class="empty-sub">${searchQ?'Modifiez votre recherche':'Ajoutez votre première pièce'}</p>${!searchQ?`<button class="btn-gold" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Ajouter</button>`:''}</div>`;
+    return;
   }
+  grid.innerHTML=`<div class="product-grid">${filtered.map(p=>{
+    const sc=p.stock==='rupture'?'red':p.stock==='commande'?'amber':p.stock==='vendu'?'purple':'green';
+    const sl=p.stock==='rupture'?'Rupture':p.stock==='commande'?'Commande':p.stock==='vendu'?'Vendu':'En stock';
+    return `<div class="product-card${p.stock==='vendu'?' sold':''}" onclick="openDetail('${p.id}')">
+      <div class="product-img">${p.img
+        ?`<img src="${p.img}" loading="lazy">`
+        :`<div class="product-placeholder"><span style="font-size:28px;opacity:.15">${sec.icon}</span><div class="placeholder-name">${p.name}</div></div>`}
+        ${p.stock==='vendu'?'<div class="sold-overlay">VENDU</div>':''}
+      </div>
+      <div class="product-body">
+        <div class="product-name">${p.name}</div>
+        ${p.sizes?`<div class="product-sku">${p.sizes}</div>`:''}
+        <div class="product-footer">
+          ${p.price?`<div class="product-price">${parseFloat(p.price).toFixed(2)}€</div>`:'<div></div>'}
+          <span class="stock-dot ${sc}" title="${sl}"></span>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+window.onSearch = v=>{searchQ=v;const b=document.getElementById('search-clear-btn');if(b)b.style.display=v?'block':'none';renderGridOnly();}
+window.clearSearch = ()=>{searchQ='';const i=document.getElementById('search-inp');if(i)i.value='';const b=document.getElementById('search-clear-btn');if(b)b.style.display='none';renderGridOnly();}
+window.onSort = v=>{sortBy=v;renderGridOnly();}
+
+// ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
+function renderSettings(){
+  const main=document.getElementById('main');
+  let html=`<div class="settings-page">
+    <h2 class="settings-title">⚙️ Paramètres — Renommer tout</h2>
+    <p class="settings-sub">Renommez les sections, marques et modèles. Les pièces existantes sont automatiquement mises à jour.</p>`;
+
+  DEFS.forEach(sec=>{
+    html+=`<div class="settings-section">
+      <div class="settings-sec-header">
+        <span class="settings-sec-icon">${sec.icon}</span>
+        <span class="settings-sec-name">${sec.label}</span>
+        <button class="btn-rename" onclick="openRenameSection('${sec.id}','${esc(sec.label)}')">✎ Renommer</button>
+      </div>
+      <div class="settings-brands">`;
+    sec.brands.forEach(brand=>{
+      html+=`<div class="settings-brand">
+        <div class="settings-brand-row">
+          <span class="settings-brand-name">📁 ${brand.name}</span>
+          <button class="btn-rename sm" onclick="openRenameItem('brand','${sec.id}','${esc(brand.name)}')">✎</button>
+        </div>
+        <div class="settings-models">`;
+      brand.models.forEach(model=>{
+        const cnt=parts.filter(p=>p.sid===sec.id&&p.brand===brand.name&&p.model===model).length;
+        html+=`<div class="settings-model-row">
+          <span class="settings-model-name">${model}</span>
+          <span class="settings-model-cnt">${cnt} pièce${cnt!==1?'s':''}</span>
+          <button class="btn-rename xs" onclick="openRenameItem('model','${sec.id}','${esc(brand.name)}','${esc(model)}')">✎</button>
+        </div>`;
+      });
+      html+=`</div></div>`;
+    });
+    html+=`</div></div>`;
+  });
+  html+=`</div>`;
+  main.innerHTML=html;
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 window.openAddPart = function(sid,brand,model){
   editingId=null; addCtx={sid,brand,model}; currentImgUrl=null;
   const sec=DEFS.find(s=>s.id===sid);
+  const isComplete=sid==='complete';
+  const hasSizes=sec?.hasSizes||false;
   document.getElementById('add-title').textContent='Nouvelle pièce';
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${brand} · ${model}`;
-  ['f-name','f-buy-price','f-price','f-sizes','f-link','f-notes'].forEach(id=>document.getElementById(id).value='');
+  ['f-name','f-price','f-link','f-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['f-sizes','f-buy-price'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('f-stock').value='stock';
-  // Calculatrice visible uniquement pour les montres complètes
-  const showCalc = sid === 'complete';
-  document.getElementById('calc-section').style.display = showCalc ? 'block' : 'none';
-  document.getElementById('buy-price-section').style.display = showCalc ? 'block' : 'none';
-  if(showCalc){
-    document.getElementById('calc-result').textContent='—';
-    document.getElementById('calc-cout').textContent='—';
-    document.getElementById('calc-benefice').textContent='—';
-    document.getElementById('calc-marge-pct').textContent='—';
-  }
+  document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
+  document.getElementById('buy-price-section').style.display='block';
+  document.getElementById('calc-section').style.display=isComplete?'block':'none';
+  if(isComplete){document.getElementById('calc-cout').textContent='—';document.getElementById('calc-benefice').textContent='—';document.getElementById('calc-marge-pct').textContent='—';document.getElementById('calc-result').textContent='—';}
   resetImg(); openModal('add-modal');
   setTimeout(()=>document.getElementById('f-name').focus(),80);
 };
@@ -480,22 +509,24 @@ window.openEditPart = function(id){
   closeModal('detail-modal');
   editingId=id; addCtx={sid:p.sid,brand:p.brand,model:p.model}; currentImgUrl=p.img||null;
   const sec=DEFS.find(s=>s.id===p.sid);
+  const isComplete=p.sid==='complete';
+  const hasSizes=sec?.hasSizes||false;
   document.getElementById('add-title').textContent='Modifier la pièce';
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${p.brand} · ${p.model}`;
   document.getElementById('f-name').value=p.name;
-  document.getElementById('f-buy-price').value=p.buyPrice||'';
+  const sp=document.getElementById('f-sizes'); if(sp) sp.value=p.sizes||'';
+  const bp=document.getElementById('f-buy-price'); if(bp) bp.value=p.buyPrice||'';
   document.getElementById('f-price').value=p.price||'';
-  document.getElementById('f-sizes').value=p.sizes||'';
   document.getElementById('f-link').value=p.link||'';
   document.getElementById('f-notes').value=p.notes||'';
   document.getElementById('f-stock').value=p.stock||'stock';
-  const showCalc = p.sid === 'complete';
-  document.getElementById('calc-section').style.display = showCalc ? 'block' : 'none';
-  document.getElementById('buy-price-section').style.display = showCalc ? 'block' : 'none';
+  document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
+  document.getElementById('buy-price-section').style.display='block';
+  document.getElementById('calc-section').style.display=isComplete?'block':'none';
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
   openModal('add-modal');
-  if(showCalc && p.buyPrice) calcPrice();
+  if(isComplete&&p.buyPrice) calcPrice();
 };
 
 window.openDetail = function(id){
@@ -503,31 +534,20 @@ window.openDetail = function(id){
   const sec=DEFS.find(s=>s.id===p.sid);
   const stockMap={stock:'En stock',commande:'En commande',rupture:'Rupture',vendu:'Vendu'};
   const stockClsMap={stock:'green',commande:'amber',rupture:'red',vendu:'purple'};
-  const stockLbl=stockMap[p.stock]||'En stock';
-  const stockCls=stockClsMap[p.stock]||'green';
   const f=(l,v,full)=>`<div class="dfield${full?' full':''}"><div class="dfl">${l}</div><div class="dfv">${v}</div></div>`;
-
-  // Marge calc display
   let margeHtml='';
   if(p.buyPrice&&p.price){
-    const achat=parseFloat(p.buyPrice)||0;
-    const vente=parseFloat(p.price)||0;
-    const benef=vente-achat;
-    const pct=achat>0?((benef/vente)*100).toFixed(0):0;
+    const a=parseFloat(p.buyPrice)||0,v=parseFloat(p.price)||0,b=v-a,pct=a>0?((b/v)*100).toFixed(0):0;
     margeHtml=`<div class="marge-strip">
-      <div class="marge-item"><div class="marge-lbl">Achat</div><div class="marge-val buy">${achat.toFixed(2)}€</div></div>
+      <div class="marge-item"><div class="marge-lbl">Achat perso</div><div class="marge-val buy">${a.toFixed(2)}€</div></div>
       <div class="marge-arrow">→</div>
-      <div class="marge-item"><div class="marge-lbl">Vente</div><div class="marge-val sell">${vente.toFixed(2)}€</div></div>
+      <div class="marge-item"><div class="marge-lbl">Revente client</div><div class="marge-val sell">${v.toFixed(2)}€</div></div>
       <div class="marge-arrow">→</div>
-      <div class="marge-item"><div class="marge-lbl">Bénéfice</div><div class="marge-val profit">+${benef.toFixed(2)}€ (${pct}%)</div></div>
+      <div class="marge-item"><div class="marge-lbl">Bénéfice</div><div class="marge-val profit">+${b.toFixed(2)}€ (${pct}%)</div></div>
     </div>`;
   }
-
   document.getElementById('detail-body').innerHTML=`
-    <div class="detail-hero">${p.img
-      ?`<img src="${p.img}">`
-      :`<div class="hero-placeholder"><span style="font-size:52px;opacity:.15">${sec.icon}</span><div class="hero-placeholder-name">${p.name}</div></div>`}
-    </div>
+    <div class="detail-hero">${p.img?`<img src="${p.img}">`:`<div class="hero-placeholder"><span style="font-size:52px;opacity:.15">${sec.icon}</span><div class="hero-placeholder-name">${p.name}</div></div>`}</div>
     <div class="modal-hdr">
       <div>
         <div class="detail-name">${p.name}</div>
@@ -539,11 +559,11 @@ window.openDetail = function(id){
       </div>
     </div>
     <div class="modal-body">
-      <div style="margin-bottom:12px"><span class="stock-badge ${stockCls}">${stockLbl}</span></div>
+      <div style="margin-bottom:12px"><span class="stock-badge ${stockClsMap[p.stock]||'green'}">${stockMap[p.stock]||'En stock'}</span></div>
       ${margeHtml}
       <div class="detail-fields">
         ${p.sizes?f('Tailles',p.sizes):''}
-        ${p.buyPrice?f('Prix achat fournisseur',`${parseFloat(p.buyPrice).toFixed(2)}€`):''}
+        ${p.buyPrice?f('Mon prix d\'achat',`${parseFloat(p.buyPrice).toFixed(2)}€`):''}
         ${p.price?f('Prix client (revente)',`${parseFloat(p.price).toFixed(2)}€`):''}
         ${p.link?f('Fournisseur',`<a href="${p.link}" target="_blank">↗ Ouvrir</a>`,true):''}
       </div>
@@ -563,42 +583,52 @@ window.openAddBrand = function(sid){
   customCtx={type:'brand',sid};
   document.getElementById('custom-title').textContent='Nouvelle marque';
   document.getElementById('custom-lbl').textContent='Nom de la marque';
-  document.getElementById('custom-inp').placeholder='ex: Omega Style, IWC…';
+  document.getElementById('custom-inp').placeholder='ex: Omega Style…';
   document.getElementById('custom-inp').value='';
   openModal('custom-modal');
   setTimeout(()=>document.getElementById('custom-inp').focus(),80);
 };
-
 window.openAddModel = function(sid,brand){
   customCtx={type:'model',sid,brand};
   document.getElementById('custom-title').textContent=brand;
   document.getElementById('custom-lbl').textContent='Nom du modèle';
-  document.getElementById('custom-inp').placeholder='ex: Speedmaster, Seamaster…';
+  document.getElementById('custom-inp').placeholder='ex: Speedmaster…';
   document.getElementById('custom-inp').value='';
   openModal('custom-modal');
   setTimeout(()=>document.getElementById('custom-inp').focus(),80);
 };
 
-function resetImg(){
-  currentImgUrl=null;
-  document.getElementById('img-prev').style.display='none';
-  setImgLoading(false);
-  document.getElementById('img-zone').classList.remove('filled');
-  document.getElementById('img-file').value='';
-}
-function setSaveBtn(on){const b=document.getElementById('save-btn');b.textContent=on?'Enregistrement…':'Enregistrer';b.disabled=on;}
+window.openRenameSection = function(sid,label){
+  window._renameCtx={sid};
+  document.getElementById('rename-type').value='section';
+  document.getElementById('rename-title').textContent='Renommer la section';
+  document.getElementById('rename-current').textContent=`Actuel : "${label}"`;
+  document.getElementById('rename-inp').value=label;
+  openModal('rename-modal');
+  setTimeout(()=>document.getElementById('rename-inp').select(),80);
+};
+window.openRenameItem = function(type,sid,brand,model){
+  window._renameCtx={sid,brand,model};
+  document.getElementById('rename-type').value=type;
+  const current=type==='brand'?brand:model;
+  document.getElementById('rename-title').textContent=type==='brand'?'Renommer la marque':'Renommer le modèle';
+  document.getElementById('rename-current').textContent=`Actuel : "${current}"`;
+  document.getElementById('rename-inp').value=current;
+  openModal('rename-modal');
+  setTimeout(()=>document.getElementById('rename-inp').select(),80);
+};
 
 // ─── EXPORT/IMPORT ────────────────────────────────────────────────────────────
 window.exportJSON = async function(){
   const blob=new Blob([JSON.stringify({parts},null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='seiko-mod.json';a.click();toast('Export téléchargé ✓');
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='seiko-mod.json';a.click();toast('Export ✓');
 };
 window.importJSON = function(input){
   const file=input.files[0]; if(!file) return;
   const r=new FileReader();
   r.onload=async e=>{
-    try{const d=JSON.parse(e.target.result);if(!d.parts) return;toast('Import en cours…');
-      for(const p of d.parts){const{id,...data}=p;await addDoc(collection(db,'parts'),{...data,ts:data.ts||Date.now()});}
+    try{const d=JSON.parse(e.target.result);if(!d.parts) return;
+      for(const p of d.parts){const{id:_,...data}=p;await addDoc(collection(db,'parts'),{...data,ts:data.ts||Date.now()});}
       toast(`${d.parts.length} pièces importées ✓`);
     }catch(e){toast('Erreur JSON',true);}
   };
@@ -606,56 +636,37 @@ window.importJSON = function(input){
 };
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
-function esc(s){return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function esc(s){return(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function openModal(id){document.getElementById(id).classList.remove('hidden');}
 function closeModal(id){document.getElementById(id).classList.add('hidden');}
 window.closeModal=closeModal;
+function resetImg(){currentImgUrl=null;document.getElementById('img-prev').style.display='none';setImgLoading(false);document.getElementById('img-zone').classList.remove('filled');document.getElementById('img-file').value='';}
+function setSaveBtn(on){const b=document.getElementById('save-btn');b.textContent=on?'Enregistrement…':'Enregistrer';b.disabled=on;}
+let _tt;
+window.toast=function(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(err?'err':'ok');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2600);}
 
-document.addEventListener('click',e=>{
-  ['add-modal','detail-modal','custom-modal'].forEach(id=>{
-    const el=document.getElementById(id); if(el&&e.target===el) closeModal(id);
-  });
-});
+document.addEventListener('click',e=>{['add-modal','detail-modal','custom-modal','rename-modal'].forEach(id=>{const el=document.getElementById(id);if(el&&e.target===el)closeModal(id);});});
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape')['add-modal','detail-modal','custom-modal'].forEach(closeModal);
+  if(e.key==='Escape')['add-modal','detail-modal','custom-modal','rename-modal'].forEach(closeModal);
   if(e.key==='Enter'&&document.activeElement.tagName!=='TEXTAREA'){
-    if(!document.getElementById('add-modal').classList.contains('hidden')) savePart();
-    if(!document.getElementById('custom-modal').classList.contains('hidden')) saveCustom();
+    if(!document.getElementById('add-modal').classList.contains('hidden'))savePart();
+    if(!document.getElementById('custom-modal').classList.contains('hidden'))saveCustom();
+    if(!document.getElementById('rename-modal').classList.contains('hidden'))saveRename();
   }
 });
 
-let _tt;
-window.toast=function(msg,err){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.className='toast show '+(err?'err':'ok');
-  clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),2600);
-};
-
-startListeners();
+loadSectionLabels().then(startListeners);
 </script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0d0d0f;
-  --bg2:#141417;
-  --bg3:#1a1a1f;
-  --bg4:#202026;
-  --line:#252530;
-  --line2:#303040;
-  --text:#ffffff;
-  --text2:#c8c6d4;
-  --text3:#8a88a0;
-  --gold:#b0b8c8;
-  --gold2:#d0d8e8;
-  --gd:rgba(176,184,200,.1);
-  --gg:rgba(176,184,200,.05);
-  --gb:rgba(176,184,200,.22);
-  --green:#4aaf78;
-  --amber-c:#b0b8c8;
-  --red-c:#c05a5a;
-  --blue-c:#6a96cc;
-  --text3:#8a88a0;
+  --bg:#0d0d0f;--bg2:#141417;--bg3:#1a1a1f;--bg4:#202026;
+  --line:#252530;--line2:#303040;
+  --text:#ffffff;--text2:#c8c6d4;--text3:#8a88a0;
+  --gold:#b0b8c8;--gold2:#d0d8e8;
+  --gd:rgba(176,184,200,.1);--gg:rgba(176,184,200,.05);--gb:rgba(176,184,200,.22);
+  --green:#4aaf78;--red-c:#c05a5a;--blue-c:#6a96cc;--amber-c:#b0b8c8;
   --r:10px;--r-sm:6px;
 }
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
@@ -668,58 +679,53 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .logo{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .logo-mark{width:28px;height:28px;border:1px solid var(--gb);border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--gd)}
 .logo-mark svg{width:12px;height:12px;stroke:var(--gold2);fill:none;stroke-width:1.5}
-.logo-main{font-family:'Playfair Display',serif;font-size:15px;font-weight:600;color:var(--text);letter-spacing:.1em;text-transform:uppercase}
+.logo-main{font-family:'Playfair Display',serif;font-size:15px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
 .logo-sub{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--gold2);letter-spacing:.2em;text-transform:uppercase;margin-top:1px}
 .hdr-div{width:1px;height:18px;background:var(--line2)}
 .hdr-stats{display:flex;gap:20px}
 .hdr-stat{display:flex;flex-direction:column}
-.hdr-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;color:#c8c6d8;letter-spacing:.14em;text-transform:uppercase}
-.hdr-stat-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:var(--text)}
+.hdr-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase}
+.hdr-stat-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500}
 .hdr-stat-val.g{color:var(--gold2)}
 .hdr-sp{flex:1}
 .hdr-btns{display:flex;gap:6px;align-items:center}
+.view-btn{padding:6px 14px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);cursor:pointer;text-align:center;letter-spacing:.08em;text-transform:uppercase;transition:all .14s}
+.view-btn:hover,.view-btn.active{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 
-/* ── NAV TABS ── */
 .nav-bar{height:42px;padding:0 24px;display:flex;align-items:flex-end;gap:0;overflow-x:auto;border-top:1px solid var(--line)}
 .nav-bar::-webkit-scrollbar{height:0}
-.nav-tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:38px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:var(--text2);transition:all .14s;white-space:nowrap;letter-spacing:.01em}
+.nav-tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:38px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:var(--text2);transition:all .14s;white-space:nowrap}
 .nav-tab:hover{color:var(--text);background:rgba(255,255,255,.03)}
 .nav-tab.active{color:var(--gold2);border-bottom-color:var(--gold2);background:var(--gg)}
-.tab-lbl{font-size:12px}
 .tab-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);background:var(--gd);border:1px solid var(--gb);padding:1px 5px;border-radius:8px}
 
-/* ── SUBHEADER (breadcrumb + back) ── */
 .sub-bar{flex-shrink:0;height:40px;padding:0 24px;display:flex;align-items:center;gap:12px;background:var(--bg3);border-bottom:1px solid var(--line)}
-.back-btn{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-size:11px;font-family:'Outfit',sans-serif;cursor:pointer;transition:all .14s}
+.back-btn{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-size:11px;font-family:'Inter',sans-serif;cursor:pointer;transition:all .14s}
 .back-btn:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
-.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px;color:#c8c6d8}
-.bc-item{color:var(--text2)}
-.bc-item.active{color:var(--text);font-weight:500}
-.bc-sep{color:#c8c6d8;font-size:10px}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px}
+.bc-item{color:var(--text2);font-weight:500}
+.bc-sep{color:var(--text3);font-size:10px}
 
-/* ── LAYOUT ── */
 .layout{flex:1;overflow:hidden;display:flex;flex-direction:column}
 .main{flex:1;overflow-y:auto;padding:24px}
 
-/* ── LEVEL HEADER ── */
+/* ── TILES ── */
 .level-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line)}
-.level-title{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;color:var(--text);letter-spacing:.04em}
-.level-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:#c8c6d8;letter-spacing:.12em;text-transform:uppercase;margin-top:5px}
-
-/* ── BRAND / MODEL TILES ── */
+.level-title{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;letter-spacing:.04em}
+.level-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-top:5px}
 .tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
 .brand-tile{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .16s;position:relative}
-.brand-tile:hover{border-color:var(--gb);box-shadow:0 4px 20px rgba(200,168,74,.08);transform:translateY(-2px)}
+.brand-tile:hover{border-color:var(--gb);box-shadow:0 4px 20px rgba(176,184,200,.06);transform:translateY(-2px)}
 .tile-cover{width:100%;height:140px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden}
 .tile-cover img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
 .brand-tile:hover .tile-cover img{transform:scale(1.04)}
 .tile-icon{font-size:36px;opacity:.12}
 .tile-body{padding:12px 14px}
-.tile-name{font-family:'Playfair Display',serif;font-size:16px;font-weight:500;color:var(--text);letter-spacing:.04em}
-.tile-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:#c8c6d8;margin-top:4px;letter-spacing:.06em}
+.tile-name{font-family:'Playfair Display',serif;font-size:16px;font-weight:500;letter-spacing:.04em}
+.tile-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:.06em}
 .tile-actions{position:absolute;top:8px;right:8px;display:none;gap:4px}
 .brand-tile:hover .tile-actions{display:flex}
-.tile-act-btn{width:24px;height:24px;border-radius:var(--r-sm);border:1px solid var(--line2);background:var(--bg2);color:var(--text2);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;font-family:'Outfit',sans-serif}
+.tile-act-btn{width:24px;height:24px;border-radius:var(--r-sm);border:1px solid var(--line2);background:var(--bg2);color:var(--text2);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;font-family:'Inter',sans-serif}
 .tile-act-btn:hover{border-color:var(--gb);color:var(--gold2);background:var(--gd)}
 .tile-act-btn.del:hover{border-color:rgba(192,90,90,.4);color:var(--red-c);background:rgba(192,90,90,.12)}
 
@@ -728,60 +734,87 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .grid-toolbar-left{display:flex;align-items:center;gap:10px}
 .grid-toolbar-right{display:flex;align-items:center;gap:8px}
 .search-wrap{position:relative;display:flex;align-items:center}
-.search-wrap svg{position:absolute;left:10px;color:#c8c6d8;pointer-events:none}
-.search-inp{padding:7px 32px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-family:'Outfit',sans-serif;font-size:12px;width:220px;transition:all .14s;outline:none}
-.search-inp:focus{border-color:var(--gb);background:var(--bg4);box-shadow:0 0 0 3px rgba(200,168,74,.05)}
-.search-inp::placeholder{color:#c8c6d8}
-.search-clear{position:absolute;right:8px;background:none;border:none;color:#c8c6d8;cursor:pointer;font-size:12px;padding:2px}
-.search-clear:hover{color:var(--text)}
-.grid-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:#c8c6d8;white-space:nowrap}
-.filter-sel{padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;cursor:pointer;outline:none;transition:border-color .14s}
-.filter-sel:hover,.filter-sel:focus{border-color:var(--gb);color:var(--text)}
+.search-wrap svg{position:absolute;left:10px;color:var(--text3);pointer-events:none}
+.search-inp{padding:7px 32px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-family:'Inter',sans-serif;font-size:12px;width:220px;outline:none;transition:all .14s}
+.search-inp:focus{border-color:var(--gb);background:var(--bg4)}
+.search-inp::placeholder{color:var(--text3)}
+.search-clear{position:absolute;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px}
+.grid-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3)}
+.filter-sel{padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;cursor:pointer;outline:none}
 .filter-sel option{background:var(--bg3)}
 
 /* ── PRODUCT GRID ── */
 .product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
 .product-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .16s}
-.product-card:hover{border-color:var(--gb);box-shadow:0 4px 20px rgba(200,168,74,.08);transform:translateY(-2px)}
+.product-card:hover{border-color:var(--gb);box-shadow:0 4px 20px rgba(176,184,200,.06);transform:translateY(-2px)}
+.product-card.sold{opacity:.6}
 .product-img{width:100%;height:180px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
 .product-img img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
 .product-card:hover .product-img img{transform:scale(1.04)}
-.product-icon{font-size:40px;opacity:.1}
+.product-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:8px}
+.placeholder-name{font-size:10px;font-weight:500;color:var(--text2);text-align:center;line-height:1.3;max-width:90%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.sold-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.14em}
 .product-body{padding:12px 14px}
-.product-name{font-size:13px;font-weight:500;color:var(--text);line-height:1.3;margin-bottom:3px}
-.product-sku{font-family:'JetBrains Mono',monospace;font-size:9px;color:#c8c6d8;letter-spacing:.06em;margin-bottom:6px}
+.product-name{font-size:13px;font-weight:500;line-height:1.3;margin-bottom:3px}
+.product-sku{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:6px}
 .product-footer{display:flex;align-items:center;justify-content:space-between}
 .product-price{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--gold2)}
 .stock-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .stock-dot.green{background:var(--green);box-shadow:0 0 5px rgba(74,175,120,.4)}
-.stock-dot.amber{background:var(--amber-c);box-shadow:0 0 5px rgba(200,168,74,.4)}
-.stock-dot.red{background:var(--red-c);box-shadow:0 0 5px rgba(192,90,90,.4)}
+.stock-dot.amber{background:var(--amber-c)}
+.stock-dot.red{background:var(--red-c)}
+.stock-dot.purple{background:#9b6dd6}
 
 /* ── EMPTY STATE ── */
-.empty-state{text-align:center;padding:60px 20px;color:var(--text)}
-.empty-icon{font-size:48px;margin-bottom:14px;opacity:.3}
+.empty-state{text-align:center;padding:60px 20px}
+.empty-icon{font-size:48px;margin-bottom:14px;opacity:.2}
 .empty-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--text);margin-bottom:8px}
 .empty-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
 
+/* ── SETTINGS ── */
+.settings-page{max-width:800px}
+.settings-title{font-family:'Playfair Display',serif;font-size:24px;margin-bottom:8px}
+.settings-sub{font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.6}
+.settings-section{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.settings-sec-header{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--bg3)}
+.settings-sec-icon{font-size:18px}
+.settings-sec-name{font-weight:600;font-size:14px;flex:1}
+.settings-brands{padding:12px 18px;display:flex;flex-direction:column;gap:8px}
+.settings-brand{background:var(--bg3);border-radius:var(--r-sm);overflow:hidden}
+.settings-brand-row{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.settings-brand-name{flex:1;font-size:13px;font-weight:500}
+.settings-models{display:flex;flex-direction:column}
+.settings-model-row{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line);transition:background .12s}
+.settings-model-row:last-child{border-bottom:none}
+.settings-model-row:hover{background:var(--bg4)}
+.settings-model-name{flex:1;font-size:12px;color:var(--text2);padding-left:16px}
+.settings-model-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);white-space:nowrap}
+.btn-rename{padding:4px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-family:'Inter',sans-serif;font-size:10px;cursor:pointer;transition:all .14s;white-space:nowrap}
+.btn-rename:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
+.btn-rename.sm{padding:3px 8px;font-size:9px}
+.btn-rename.xs{padding:2px 7px;font-size:9px}
+
 /* ── BUTTONS ── */
-.btn-gold{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .14s;letter-spacing:.04em;white-space:nowrap}
-.btn-gold:hover{background:rgba(176,184,200,.18);border-color:var(--gold2);box-shadow:0 0 12px rgba(176,184,200,.08)}
+.btn-gold{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .14s;white-space:nowrap}
+.btn-gold:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
 .btn-gold.sm{padding:6px 12px;font-size:10px}
 .btn-outline{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .14s;white-space:nowrap}
 .btn-outline:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 .btn-outline.sm{padding:5px 10px;font-size:10px}
-.btn-outline.blue{border-color:rgba(106,150,204,.3);color:var(--blue-c);background:rgba(106,150,204,.08)}.btn-outline.blue:hover{background:rgba(106,150,204,.16)}
-.btn-outline.red{border-color:rgba(192,90,90,.3);color:var(--red-c);background:rgba(192,90,90,.08)}.btn-outline.red:hover{background:rgba(192,90,90,.16)}
-.btn-sb{padding:6px 12px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:9px;color:#c8c6d8;cursor:pointer;text-align:center;letter-spacing:.08em;text-transform:uppercase;transition:all .14s}
+.btn-outline.blue{border-color:rgba(106,150,204,.3);color:var(--blue-c);background:rgba(106,150,204,.08)}
+.btn-outline.blue:hover{background:rgba(106,150,204,.16)}
+.btn-outline.red{border-color:rgba(192,90,90,.3);color:var(--red-c);background:rgba(192,90,90,.08)}
+.btn-outline.red:hover{background:rgba(192,90,90,.16)}
+.btn-sb{padding:6px 12px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);cursor:pointer;letter-spacing:.08em;text-transform:uppercase;transition:all .14s}
 .btn-sb:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 
-/* ── OVERLAY / MODAL ── */
+/* ── MODALS ── */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)}
 .overlay.hidden{display:none}
 .modal{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r);width:100%;max-width:500px;max-height:92vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.9)}
 .modal-hdr{padding:18px 22px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:2}
-.modal-title{font-family:'Playfair Display',serif;font-size:19px;font-weight:500;color:var(--text);letter-spacing:.04em}
-.modal-x{width:26px;height:26px;border:1px solid var(--line2);background:var(--bg3);border-radius:var(--r-sm);cursor:pointer;color:#c8c6d8;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .14s;flex-shrink:0}
+.modal-title{font-family:'Playfair Display',serif;font-size:19px;font-weight:500;letter-spacing:.04em}
+.modal-x{width:26px;height:26px;border:1px solid var(--line2);background:var(--bg3);border-radius:var(--r-sm);cursor:pointer;color:var(--text3);font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .14s;flex-shrink:0}
 .modal-x:hover{background:rgba(192,90,90,.12);color:var(--red-c);border-color:rgba(192,90,90,.3)}
 .modal-body{padding:18px 22px}
 .modal-footer{padding:12px 22px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg2)}
@@ -790,33 +823,40 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .detail-modal{max-width:540px}
 .detail-hero{width:100%;height:200px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid var(--line)}
 .detail-hero img{width:100%;height:100%;object-fit:cover}
-.hero-icon{font-size:48px;opacity:.1}
-.detail-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;color:var(--text);letter-spacing:.03em;line-height:1.1}
-.detail-path{font-family:'JetBrains Mono',monospace;font-size:8px;color:#c8c6d8;letter-spacing:.12em;text-transform:uppercase;margin-top:4px}
+.hero-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg3)}
+.hero-placeholder-name{font-family:'Playfair Display',serif;font-size:18px;color:var(--text2);opacity:.6;text-align:center;padding:0 20px}
+.detail-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;letter-spacing:.03em;line-height:1.1}
+.detail-path{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-top:4px}
 .detail-price{font-family:'Playfair Display',serif;font-size:28px;font-weight:500;color:var(--gold2);line-height:1}
 .detail-price span{font-size:16px;opacity:.7}
 .stock-badge{font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border-radius:20px;letter-spacing:.1em;text-transform:uppercase;display:inline-block}
 .stock-badge.green{background:rgba(74,175,120,.12);color:var(--green);border:1px solid rgba(74,175,120,.25)}
 .stock-badge.amber{background:var(--gd);color:var(--gold2);border:1px solid var(--gb)}
 .stock-badge.red{background:rgba(192,90,90,.12);color:var(--red-c);border:1px solid rgba(192,90,90,.25)}
+.stock-badge.purple{background:rgba(155,109,214,.12);color:#b88fe8;border:1px solid rgba(155,109,214,.25)}
 .detail-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
 .dfield{background:var(--bg3);border-radius:var(--r-sm);padding:9px 11px;border:1px solid var(--line)}
 .dfield.full{grid-column:1/-1}
-.dfl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#c0becе;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px}
+.dfl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#c0bece;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px}
 .dfv{font-size:13px;font-weight:400;color:var(--text)}
-.dfv code{font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--bg4);padding:1px 5px;border-radius:3px;color:var(--gold2)}
-.dfv a{color:var(--gold2);text-decoration:none}.dfv a:hover{text-decoration:underline}
+.dfv a{color:var(--gold2);text-decoration:none}
+.dfv a:hover{text-decoration:underline}
 .detail-notes{background:var(--bg3);border-radius:var(--r-sm);padding:10px 12px;border:1px solid var(--line);margin-bottom:14px}
-.detail-notes .dfl{margin-bottom:5px}
 .detail-notes p{font-size:13px;color:var(--text2);line-height:1.7}
 .detail-actions{display:flex;gap:7px;flex-wrap:wrap}
+.marge-strip{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;flex-wrap:wrap}
+.marge-item{display:flex;flex-direction:column;gap:2px}
+.marge-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.marge-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500}
+.marge-val.buy{color:var(--red-c)}.marge-val.sell{color:var(--gold2)}.marge-val.profit{color:#4aaf78}
+.marge-arrow{color:var(--text3);font-size:14px}
 
 /* ── FORM ── */
 .fg{margin-bottom:13px}
-.fg label{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;color:#c0becе;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;font-weight:500}
+.fg label{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;color:#c0bece;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;font-weight:500}
 .fg input,.fg textarea,.fg select{width:100%;padding:8px 11px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-family:'Inter',sans-serif;font-size:13px;transition:all .14s;outline:none}
-.fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--gb);background:var(--bg4);box-shadow:0 0 0 3px rgba(176,184,200,.05)}
-.fg input::placeholder,.fg textarea::placeholder{color:#c8c6d8}
+.fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--gb);background:var(--bg4)}
+.fg input::placeholder,.fg textarea::placeholder{color:var(--text3)}
 .fg select option{background:var(--bg3)}
 .fg textarea{min-height:68px;resize:vertical;line-height:1.6}
 .form-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -825,14 +865,15 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .img-zone:hover{border-color:var(--gb);background:var(--gg)}
 .img-zone.filled{border-style:solid;border-color:var(--line2)}
 .img-zone img{max-width:100%;max-height:108px;border-radius:var(--r-sm)}
-.img-hint{font-family:'JetBrains Mono',monospace;font-size:8px;color:#c8c6d8;letter-spacing:.1em;text-transform:uppercase}
+.img-hint{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.section-divider{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;padding:10px 0 6px;border-top:1px solid var(--line);margin-top:4px;margin-bottom:8px}
 
 /* ── CALCULATOR ── */
 .calc-block{background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r);padding:14px 16px;margin-bottom:14px}
 .calc-title{display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px;font-weight:500}
 .calc-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 .calc-field label{display:block;font-family:'JetBrains Mono',monospace;font-size:8px;color:#c0bece;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
-.calc-field input[type=number]{width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg4);color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;transition:border-color .14s}
+.calc-field input[type=number]{width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg4);color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none}
 .calc-field input[type=number]:focus{border-color:var(--gb)}
 .calc-result-row{display:flex;align-items:center;gap:8px;background:var(--bg4);border-radius:var(--r-sm);padding:10px 12px;margin-top:4px;flex-wrap:wrap}
 .calc-stat{display:flex;flex-direction:column;gap:2px;flex:1;min-width:60px}
@@ -841,41 +882,21 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .calc-stat-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--text2)}
 .calc-stat-val.green{color:#4aaf78}
 .calc-stat-val.highlight{font-size:16px;color:var(--gold2);font-weight:600}
-.calc-apply-btn{padding:6px 12px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s;letter-spacing:.04em}
-.calc-apply-btn:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
+.calc-apply-btn{padding:6px 12px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s}
+.calc-apply-btn:hover{background:rgba(176,184,200,.18)}
 
-/* ── SOLD / PLACEHOLDER ── */
-.product-card.sold{opacity:.6}
-.product-card.sold .product-img{filter:grayscale(.4)}
-.sold-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:#fff;letter-spacing:.14em}
-.product-img{position:relative}
-.product-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:var(--bg3);padding:8px}
-.placeholder-name{font-size:10px;font-weight:500;color:var(--text2);text-align:center;line-height:1.3;max-width:90%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
-.hero-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg3)}
-.hero-placeholder-name{font-family:'Playfair Display',serif;font-size:18px;color:var(--text2);opacity:.6;text-align:center;padding:0 20px}
-.stock-dot.purple{background:#9b6dd6;box-shadow:0 0 5px rgba(155,109,214,.4)}
-.stock-badge.purple{background:rgba(155,109,214,.12);color:#b88fe8;border:1px solid rgba(155,109,214,.25)}
-
-/* ── MARGE STRIP ── */
-.marge-strip{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;flex-wrap:wrap}
-.marge-item{display:flex;flex-direction:column;gap:2px}
-.marge-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
-.marge-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500}
-.marge-val.buy{color:var(--red-c)}
-.marge-val.sell{color:var(--gold2)}
-.marge-val.profit{color:#4aaf78}
-.marge-arrow{color:var(--text3);font-size:14px}
+/* ── SPINNER / TOAST ── */
 .spinner{width:18px;height:18px;border:1.5px solid var(--line2);border-top-color:var(--gold2);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
-.loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:999}
-.loading-screen.hidden{display:none}
-.loading-logo{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;letter-spacing:.18em;color:var(--text);text-transform:uppercase}
-.loading-logo span{color:var(--gold2)}
-.loading-line{width:48px;height:1px;background:linear-gradient(90deg,transparent,var(--gold2),transparent)}
 .toast{position:fixed;bottom:22px;right:22px;padding:10px 16px;border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;z-index:999;opacity:0;transform:translateY(14px);transition:all .2s;pointer-events:none;border:1px solid;box-shadow:0 8px 28px rgba(0,0,0,.6)}
 .toast.show{opacity:1;transform:translateY(0)}
 .toast.ok{background:var(--bg2);color:#5abf88;border-color:rgba(74,175,120,.25)}
 .toast.err{background:var(--bg2);color:var(--red-c);border-color:rgba(192,90,90,.25)}
+.loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:999}
+.loading-screen.hidden{display:none}
+.loading-logo{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;letter-spacing:.18em;text-transform:uppercase}
+.loading-logo span{color:var(--gold2)}
+.loading-line{width:48px;height:1px;background:linear-gradient(90deg,transparent,var(--gold2),transparent)}
 </style>
 </head>
 <body>
@@ -891,26 +912,19 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
   <div class="hdr-top">
     <div class="logo">
       <div class="logo-mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="16" y2="9"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="16" y2="9"/></svg>
       </div>
-      <div>
-        <div class="logo-main">Seiko Mod</div>
-        <div class="logo-sub">Catalogue Admin</div>
-      </div>
+      <div><div class="logo-main">Seiko Mod</div><div class="logo-sub">Catalogue Admin</div></div>
     </div>
     <div class="hdr-div"></div>
     <div class="hdr-stats">
-      <div class="hdr-stat">
-        <div class="hdr-stat-lbl">Pièces</div>
-        <div class="hdr-stat-val" id="hdr-total">0</div>
-      </div>
-      <div class="hdr-stat">
-        <div class="hdr-stat-lbl">Valeur</div>
-        <div class="hdr-stat-val g" id="hdr-val">0.00€</div>
-      </div>
+      <div class="hdr-stat"><div class="hdr-stat-lbl">Pièces</div><div class="hdr-stat-val" id="hdr-total">0</div></div>
+      <div class="hdr-stat"><div class="hdr-stat-lbl">Valeur</div><div class="hdr-stat-val g" id="hdr-val">0.00€</div></div>
     </div>
     <div class="hdr-sp"></div>
     <div class="hdr-btns">
+      <button class="view-btn active" data-view="catalogue" onclick="setView('catalogue')">📦 Catalogue</button>
+      <button class="view-btn" data-view="settings" onclick="setView('settings')">⚙️ Paramètres</button>
       <button class="btn-sb" onclick="exportJSON()">↓ Export</button>
       <label class="btn-sb" style="cursor:pointer">↑ Import<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label>
     </div>
@@ -927,10 +941,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
   <div class="breadcrumb" id="breadcrumb"></div>
 </div>
 
-<!-- MAIN -->
-<div class="layout">
-  <div class="main" id="main"></div>
-</div>
+<div class="layout"><div class="main" id="main"></div></div>
 
 <!-- ADD / EDIT MODAL -->
 <div class="overlay hidden" id="add-modal">
@@ -941,13 +952,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     </div>
     <div class="modal-body">
       <div class="ctx-pill" id="add-ctx"></div>
-
-      <!-- Photo -->
       <div class="fg">
         <label>Photo</label>
         <div class="img-zone" id="img-zone" onclick="document.getElementById('img-file').click()">
           <div id="img-ph">
-            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:#c8c6d8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg>
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--text3)"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg>
             <div class="img-hint">Cliquer pour ajouter</div>
           </div>
           <img id="img-prev" style="display:none">
@@ -955,59 +964,53 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
         </div>
       </div>
 
-      <!-- Nom + SKU -->
       <div class="fg"><label>Nom *</label><input type="text" id="f-name" placeholder="ex: Bracelet Jubilée 20mm"></div>
-      <div class="fg"><label>Tailles disponibles</label><input type="text" id="f-sizes" placeholder="36mm, 39mm, 41mm"></div>
 
-      <!-- Prix achat (montres complètes seulement) -->
-      <div id="buy-price-section" style="display:none">
-        <div class="fg"><label>Prix achat total des pièces (€)</label><input type="number" id="f-buy-price" placeholder="ex: 65.00" min="0" step="0.01" oninput="calcPrice()"></div>
+      <!-- Tailles (bracelets + montres complètes) -->
+      <div id="sizes-section" style="display:none">
+        <div class="fg"><label>Tailles disponibles</label><input type="text" id="f-sizes" placeholder="36mm, 39mm, 41mm"></div>
       </div>
 
-      <!-- ── CALCULATRICE (montres complètes seulement) ── -->
+      <!-- Prix d'achat PERSONNEL (toutes sections) -->
+      <div id="buy-price-section">
+        <div class="section-divider">💰 Prix & Stock</div>
+        <div class="fg"><label>Mon prix d'achat (€) — ce que je paie</label><input type="number" id="f-buy-price" placeholder="ex: 48.00" min="0" step="0.01" oninput="calcPrice()"></div>
+      </div>
+
+      <!-- Calculatrice (montres complètes seulement) -->
       <div id="calc-section" style="display:none">
-      <div class="calc-block">
-        <div class="calc-title">
-          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
-          Calculatrice de prix de vente
-        </div>
-        <div class="calc-row">
-          <div class="calc-field">
-            <label>Livraison fournisseur (€)</label>
-            <input type="number" id="calc-ship-in" value="8" min="0" step="0.5" oninput="calcPrice()">
+        <div class="calc-block">
+          <div class="calc-title">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+            Calculatrice de prix de vente
           </div>
-          <div class="calc-field">
-            <label>Main d'œuvre — 1h30 à 25€/h</label>
-            <input type="number" id="calc-labor" value="37" min="0" step="1" oninput="calcPrice()">
+          <div class="calc-row">
+            <div class="calc-field"><label>Livraison fournisseur (€)</label><input type="number" id="calc-ship-in" value="8" min="0" step="0.5" oninput="calcPrice()"></div>
+            <div class="calc-field"><label>Main d'œuvre — 1h30 à 25€/h</label><input type="number" id="calc-labor" value="37" min="0" step="1" oninput="calcPrice()"></div>
+          </div>
+          <div class="calc-row">
+            <div class="calc-field"><label>Expédition client (€)</label><input type="number" id="calc-ship-out" value="5" min="0" step="0.5" oninput="calcPrice()"></div>
+            <div class="calc-field" style="display:flex;align-items:center;gap:8px;padding-top:18px">
+              <input type="checkbox" id="calc-vinted" onchange="calcPrice()" style="width:16px;height:16px;accent-color:var(--gold2)">
+              <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;color:var(--text2)" for="calc-vinted">Vente Vinted (+5%)</label>
+            </div>
+          </div>
+          <div class="calc-row" style="grid-template-columns:1fr">
+            <div class="calc-field">
+              <label>Multiplicateur marge — <span id="calc-marge-val">1.7x</span></label>
+              <input type="range" id="calc-marge" min="1.2" max="3.5" step="0.1" value="1.73" oninput="calcPrice()" style="width:100%;margin-top:6px;accent-color:var(--gold2)">
+            </div>
+          </div>
+          <div class="calc-result-row">
+            <div class="calc-stat"><div class="calc-stat-lbl">Coût total</div><div class="calc-stat-val" id="calc-cout">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Bénéfice</div><div class="calc-stat-val green" id="calc-benefice">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Marge</div><div class="calc-stat-val green" id="calc-marge-pct">—</div></div>
+            <div class="calc-stat main"><div class="calc-stat-lbl">Prix suggéré</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
+            <button class="calc-apply-btn" onclick="applyCalcPrice()">Appliquer →</button>
           </div>
         </div>
-        <div class="calc-row">
-          <div class="calc-field">
-            <label>Expédition client (€)</label>
-            <input type="number" id="calc-ship-out" value="5" min="0" step="0.5" oninput="calcPrice()">
-          </div>
-          <div class="calc-field" style="display:flex;align-items:center;gap:8px;padding-top:18px">
-            <input type="checkbox" id="calc-vinted" onchange="calcPrice()" style="width:16px;height:16px;accent-color:var(--gold2)">
-            <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;color:var(--text2)" for="calc-vinted">Vente sur Vinted (+5%)</label>
-          </div>
-        </div>
-        <div class="calc-row" style="grid-template-columns:1fr">
-          <div class="calc-field">
-            <label>Multiplicateur marge — <span id="calc-marge-val">1.7x</span></label>
-            <input type="range" id="calc-marge" min="1.2" max="3.5" step="0.1" value="1.73" oninput="calcPrice()" style="width:100%;margin-top:6px;accent-color:var(--gold2)">
-          </div>
-        </div>
-        <div class="calc-result-row">
-          <div class="calc-stat"><div class="calc-stat-lbl">Coût total</div><div class="calc-stat-val" id="calc-cout">—</div></div>
-          <div class="calc-stat"><div class="calc-stat-lbl">Bénéfice</div><div class="calc-stat-val green" id="calc-benefice">—</div></div>
-          <div class="calc-stat"><div class="calc-stat-lbl">Marge nette</div><div class="calc-stat-val green" id="calc-marge-pct">—</div></div>
-          <div class="calc-stat main"><div class="calc-stat-lbl">Prix suggéré</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
-          <button class="calc-apply-btn" onclick="applyCalcPrice()">Appliquer →</button>
-        </div>
-      </div>
       </div>
 
-      <!-- Prix client + Stock -->
       <div class="form-2">
         <div class="fg"><label>Prix client / Revente (€)</label><input type="number" id="f-price" placeholder="0.00" min="0" step="0.01"></div>
         <div class="fg"><label>Stock</label>
@@ -1021,7 +1024,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
       </div>
 
       <div class="fg"><label>Lien fournisseur</label><input type="url" id="f-link" placeholder="https://…"></div>
-      <div class="fg"><label>Notes</label><textarea id="f-notes" placeholder="Coloris, taille, état…"></textarea></div>
+      <div class="fg"><label>Notes</label><textarea id="f-notes" placeholder="Coloris, état, détails…"></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="btn-outline sm" onclick="closeModal('add-modal')">Annuler</button>
@@ -1052,13 +1055,31 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
   </div>
 </div>
 
+<!-- RENAME MODAL -->
+<div class="overlay hidden" id="rename-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-hdr">
+      <div class="modal-title" id="rename-title">Renommer</div>
+      <button class="modal-x" onclick="closeModal('rename-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text3);margin-bottom:14px" id="rename-current"></p>
+      <input type="hidden" id="rename-type">
+      <div class="fg"><label>Nouveau nom</label><input type="text" id="rename-inp" placeholder="Nouveau nom…"></div>
+      <p style="font-size:11px;color:var(--text3);margin-top:4px;line-height:1.6">⚠️ Toutes les pièces associées seront automatiquement mises à jour.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline sm" onclick="closeModal('rename-modal')">Annuler</button>
+      <button class="btn-gold sm" onclick="saveRename()">Renommer</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
 const obs=new MutationObserver(()=>{
-  if(document.getElementById('main').children.length>0){
-    document.getElementById('loading').classList.add('hidden');obs.disconnect();
-  }
+  if(document.getElementById('main').children.length>0){document.getElementById('loading').classList.add('hidden');obs.disconnect();}
 });
 obs.observe(document.getElementById('main'),{childList:true});
 setTimeout(()=>document.getElementById('loading').classList.add('hidden'),4000);
