@@ -152,6 +152,75 @@ window.duplicatePart = async function(id) {
   closeModal('detail-modal'); toast('Pièce dupliquée ✓');
 };
 
+// ─── TAOBAO IMPORT ────────────────────────────────────────────────────────────
+const RAPIDAPI_KEY = '6d7f8e9525msh3dbd8becff78157p1d13f8jsn023f0c5d252c';
+
+window.importFromTaobao = async function() {
+  const urlInput = document.getElementById('taobao-url');
+  const status = document.getElementById('taobao-status');
+  const url = urlInput.value.trim();
+  if(!url) { status.textContent = '⚠️ Colle un lien Taobao d\'abord'; status.className='taobao-status err'; return; }
+
+  // Extract item ID from Taobao URL
+  let itemId = null;
+  const idMatch = url.match(/[?&]id=(\d+)/) || url.match(/item\.taobao\.com\/item\.htm.*id=(\d+)/) || url.match(/\/(\d{10,})/);
+  if(idMatch) itemId = idMatch[1];
+  if(!itemId) { status.textContent = '⚠️ Lien Taobao invalide — copie l\'URL complète'; status.className='taobao-status err'; return; }
+
+  status.textContent = '⏳ Récupération des données…'; status.className='taobao-status loading';
+
+  try {
+    const res = await fetch(`https://taobao-datahub.p.rapidapi.com/item_detail?itemid=${itemId}&country=FR`, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-host': 'taobao-datahub.p.rapidapi.com',
+        'x-rapidapi-key': RAPIDAPI_KEY
+      }
+    });
+    const data = await res.json();
+
+    if(!res.ok || data.error) throw new Error(data.error || 'Erreur API');
+
+    const item = data.item || data.result || data;
+
+    // Extract photo
+    const imgUrl = item.pic_url || item.main_imgs?.[0] || item.item_imgs?.[0]?.url || item.images?.[0];
+    // Extract price in yuan
+    const priceYuan = parseFloat(item.price || item.current_price || item.priceText || 0);
+    // Convert yuan to euros (approximate rate)
+    const EUR_RATE = 0.13;
+    const priceEur = priceYuan > 0 ? (priceYuan * EUR_RATE).toFixed(2) : '';
+
+    // Fill in the form
+    if(imgUrl) {
+      // Set as external image URL directly
+      currentImgUrl = imgUrl.startsWith('//') ? 'https:'+imgUrl : imgUrl;
+      document.getElementById('img-prev').src = currentImgUrl;
+      document.getElementById('img-prev').style.display = 'block';
+      document.getElementById('img-ph').style.display = 'none';
+      document.getElementById('img-zone').classList.add('filled');
+    }
+
+    if(priceEur) {
+      document.getElementById('f-buy-price').value = priceEur;
+      calcPrice();
+    }
+
+    // Fill supplier link
+    document.getElementById('f-link').value = url;
+
+    status.textContent = `✅ Importé ! Photo + prix (${priceEur}€) récupérés. Ajoute le nom toi-même.`;
+    status.className = 'taobao-status ok';
+    urlInput.value = '';
+    document.getElementById('f-name').focus();
+
+  } catch(e) {
+    console.error(e);
+    status.textContent = '❌ Erreur : ' + (e.message || 'Impossible de récupérer les données');
+    status.className = 'taobao-status err';
+  }
+};
+
 // ─── CALCULATOR ───────────────────────────────────────────────────────────────
 window.calcPrice = function() {
   const achat    = parseFloat(document.getElementById('f-buy-price')?.value)||0;
@@ -828,6 +897,20 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .btn-rename.sm{padding:3px 8px;font-size:9px}
 .btn-rename.xs{padding:2px 7px;font-size:9px}
 
+/* ── TAOBAO IMPORT ── */
+.taobao-import-block{background:var(--bg3);border:1px solid var(--gb);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px}
+.taobao-import-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px}
+.taobao-import-row{display:flex;gap:8px}
+.taobao-inp{flex:1;padding:8px 12px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg4);color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;transition:border-color .14s}
+.taobao-inp:focus{border-color:var(--gb)}
+.taobao-inp::placeholder{color:var(--text3)}
+.taobao-btn{padding:8px 14px;background:var(--gd);border:1px solid var(--gb);border-radius:var(--r-sm);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s}
+.taobao-btn:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
+.taobao-status{font-size:11px;margin-top:6px;line-height:1.4;min-height:16px}
+.taobao-status.ok{color:var(--green)}
+.taobao-status.err{color:var(--red-c)}
+.taobao-status.loading{color:var(--text3)}
+
 /* ── BUTTONS ── */
 .btn-gold{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .14s;white-space:nowrap}
 .btn-gold:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
@@ -1010,6 +1093,17 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     </div>
     <div class="modal-body">
       <div class="ctx-pill" id="add-ctx"></div>
+
+      <!-- TAOBAO IMPORT -->
+      <div class="taobao-import-block">
+        <div class="taobao-import-title">🔗 Importer depuis Taobao</div>
+        <div class="taobao-import-row">
+          <input type="url" id="taobao-url" placeholder="Colle le lien Taobao ici…" class="taobao-inp">
+          <button class="taobao-btn" onclick="importFromTaobao()">Importer</button>
+        </div>
+        <div class="taobao-status" id="taobao-status"></div>
+      </div>
+
       <div class="fg">
         <label>Photo</label>
         <div class="img-zone" id="img-zone" onclick="document.getElementById('img-file').click()">
