@@ -3,7 +3,7 @@
     {
       "target": "catalogue",
       "public": ".",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "client/**"]
     },
     {
       "target": "client",
