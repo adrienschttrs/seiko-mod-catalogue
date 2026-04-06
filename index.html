@@ -256,6 +256,8 @@ window.updateVariant = function(i,key,val) {
   if(!window._variants) return;
   window._variants[i][key]=val;
 };
+
+window.applyCalcPrice = function() {
   const v=document.getElementById('calc-result').textContent;
   document.getElementById('f-price').value=parseFloat(v).toFixed(2);
   toast('Prix appliqué ✓');
