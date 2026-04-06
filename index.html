@@ -135,6 +135,8 @@ window.savePart = async function() {
     price:    document.getElementById('f-price').value||'',
     publish:  document.getElementById('f-publish')?.checked||false,
     link:     document.getElementById('f-link').value||'',
+    link2:    document.getElementById('f-link2').value||'',
+    modelTag: document.getElementById('f-model-tag').value||'',
     notes:    document.getElementById('f-notes').value||'',
     stock:    document.getElementById('f-stock').value||'stock',
     img:currentImgUrl||'', ts:Date.now()
@@ -546,8 +548,9 @@ window.openAddPart = function(sid,brand,model){
   const hasSizes=sec?.hasSizes||false;
   document.getElementById('add-title').textContent='Nouvelle pièce';
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${brand} · ${model}`;
-  ['f-name','f-link','f-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['f-name','f-link','f-link2','f-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ['f-sizes','f-buy-price'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const fmtag=document.getElementById('f-model-tag'); if(fmtag) fmtag.value='';;
   const fp=document.getElementById('f-publish'); if(fp) fp.checked=false;
   document.getElementById('f-stock').value='stock';
   // Prix auto 189,90€ pour montres complètes
@@ -588,6 +591,8 @@ window.openEditPart = function(id){
   document.getElementById('f-price').value=p.price||'';
   const fp=document.getElementById('f-publish'); if(fp) fp.checked=p.publish||false;
   document.getElementById('f-link').value=p.link||'';
+  const fl2=document.getElementById('f-link2'); if(fl2) fl2.value=p.link2||'';
+  const fmtag=document.getElementById('f-model-tag'); if(fmtag) fmtag.value=p.modelTag||'';
   document.getElementById('f-notes').value=p.notes||'';
   document.getElementById('f-stock').value=p.stock||'stock';
   const showResaleEdit=p.sid==='complete'||p.sid==='accessoire';
@@ -649,7 +654,10 @@ window.openDetail = function(id){
         ${p.sizes?f('Tailles',p.sizes):''}
         ${p.buyPrice?f('Mon prix d\'achat',`${parseFloat(p.buyPrice).toFixed(2)}€`):''}
         ${showResaleDetail&&p.price?f('Prix client (revente)',`${parseFloat(p.price).toFixed(2)}€`):''}
-        ${p.link?f('Fournisseur',`<a href="${p.link}" target="_blank">↗ Ouvrir</a>`,true):''}
+        ${p.link?f('Fournisseur 1',`<a href="${p.link}" target="_blank">↗ Ouvrir</a>`,true):''}
+        ${p.link2?f('Fournisseur 2',`<a href="${p.link2}" target="_blank">↗ Ouvrir</a>`,true):''}
+        ${p.modelTag?f('Tag modèle',`<span style="background:var(--gd);border:1px solid var(--gb);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--gold2)">${p.modelTag}</span>`):''}
+
       </div>
       ${p.notes?`<div class="detail-notes"><div class="dfl">Notes</div><p>${p.notes.replace(/\n/g,'<br>')}</p></div>`:''}
       <div class="detail-actions">
@@ -657,7 +665,8 @@ window.openDetail = function(id){
         <button class="btn-outline sm blue" onclick="openEditPart('${p.id}')">✎ Modifier</button>
         <button class="btn-outline sm" onclick="duplicatePart('${p.id}')">⧉ Dupliquer</button>
         <button class="btn-outline sm red" onclick="deletePart('${p.id}')">✕ Supprimer</button>
-        ${p.link?`<button class="btn-gold sm" onclick="window.open('${p.link}','_blank')">↗ Fournisseur</button>`:''}
+        ${p.link?`<button class="btn-gold sm" onclick="window.open('${p.link}','_blank')">↗ Fournisseur 1</button>`:''}
+        ${p.link2?`<button class="btn-gold sm" onclick="window.open('${p.link2}','_blank')">↗ Fournisseur 2</button>`:''}
       </div>
     </div>`;
   openModal('detail-modal');
@@ -1245,7 +1254,24 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
         </select>
       </div>
 
-      <div class="fg"><label>Lien fournisseur</label><input type="url" id="f-link" placeholder="https://…"></div>
+      <div class="fg"><label>Lien fournisseur 1</label><input type="url" id="f-link" placeholder="https://…"></div>
+      <div class="fg"><label>Lien fournisseur 2 <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(2ème taille / variante)</span></label><input type="url" id="f-link2" placeholder="https://…"></div>
+      <div class="fg"><label>Tag modèle <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(pour le filtre sur Adri Mods)</span></label>
+        <select id="f-model-tag">
+          <option value="">— Aucun tag —</option>
+          <option>GMT-Master</option>
+          <option>Datejust</option>
+          <option>Submariner</option>
+          <option>Explorer</option>
+          <option>Daytona</option>
+          <option>Day-Date</option>
+          <option>Santos</option>
+          <option>Nautilus</option>
+          <option>Aquanaut</option>
+          <option>Royal Oak</option>
+          <option>PRX</option>
+        </select>
+      </div>
       <div class="fg"><label>Notes</label><textarea id="f-notes" placeholder="Coloris, état, détails…"></textarea></div>
 
       <!-- Publier sur Adri Mods -->
