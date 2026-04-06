@@ -3,84 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Adri Mods — Seiko Mod Watches</title>
-<meta name="description" content="Montres Seiko Mod artisanales et boîtes de voyage premium. Chaque mod est assemblé avec passion.">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-<script>
-// EmailJS config — hors du module pour accès global
-const EMAILJS_SVC = 'service_m0q9his';
-const EMAILJS_TPL = 'template_cs0qicg';
-const EMAILJS_KEY = 'Y5CoddsVS6RvfRcZN';
-emailjs.init(EMAILJS_KEY);
-
-window.sendContact = async function(e) {
-  e.preventDefault();
-  const btn=document.getElementById('cf-btn'); btn.textContent='Envoi…'; btn.disabled=true;
-  try {
-    await emailjs.send(EMAILJS_SVC, EMAILJS_TPL, {
-      from_name:  document.getElementById('c-name').value,
-      from_email: document.getElementById('c-email').value,
-      message:    document.getElementById('c-msg').value,
-    });
-    btn.textContent='Envoyé ✓'; btn.style.background='#2a7a4a';
-    document.getElementById('contact-form').reset();
-    setTimeout(()=>{btn.textContent='Envoyer';btn.style.background='';btn.disabled=false;},3000);
-  } catch(err) {
-    console.error('EmailJS error:', err);
-    btn.textContent='Erreur — réessayez'; btn.style.background='#c04040';
-    setTimeout(()=>{btn.textContent='Envoyer';btn.style.background='';btn.disabled=false;},3000);
-  }
-};
-
-window._uploadedPhotoUrl = '';
-
-window.handlePhotoUpload = async function(input) {
-  const file = input.files[0]; if(!file) return;
-  const label = document.getElementById('photo-label');
-  label.textContent = 'Upload en cours…';
-  document.getElementById('photo-upload-zone').style.opacity = '0.6';
-  try {
-    // Upload via Imgur API (anonymous, no key needed for small images)
-    const fd = new FormData();
-    fd.append('image', file);
-    const res = await fetch('https://api.imgur.com/3/image', {
-      method: 'POST',
-      headers: { Authorization: 'Client-ID 546c25a59c58ad7' },
-      body: fd
-    });
-    const data = await res.json();
-    if(data.success) {
-      window._uploadedPhotoUrl = data.data.link;
-      document.getElementById('photo-preview').src = data.data.link;
-      document.getElementById('photo-preview-wrap').style.display = 'block';
-      label.textContent = '✓ Photo ajoutée';
-      document.getElementById('photo-upload-zone').style.opacity = '1';
-      document.getElementById('photo-upload-zone').style.borderColor = '#2a7a4a';
-    } else {
-      throw new Error('Upload failed');
-    }
-  } catch(err) {
-    label.textContent = 'Erreur — réessayez';
-    document.getElementById('photo-upload-zone').style.opacity = '1';
-  }
-};
-
-window.removePhoto = function() {
-  window._uploadedPhotoUrl = '';
-  document.getElementById('co-photo').value = '';
-  document.getElementById('photo-preview-wrap').style.display = 'none';
-  document.getElementById('photo-label').textContent = 'Cliquer pour ajouter une photo';
-  document.getElementById('photo-upload-zone').style.borderColor = '';
-};
-</script>
+<title>Seiko Mod — Catalogue Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, getDocs, onSnapshot, query, orderBy, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-const INSTAGRAM   = 'https://instagram.com/adrimods';
-const VINTED      = 'https://www.vinted.be';
-const ABOUT_PHOTO = '';
+const CLOUDINARY_CLOUD  = 'dsdbkj5nf';
+const CLOUDINARY_PRESET = 'seiko_mod_unsigned';
 
 const app = initializeApp({
   apiKey:"AIzaSyBXdDBq6H0ngwoCKDXN7iW9bcqJ5AVD7Wc",
@@ -92,1004 +22,1301 @@ const app = initializeApp({
 });
 const db = getFirestore(app);
 
-let allProducts = [];
-let activeCategory = 'all';
-let activeModelTag = ''; // tag modèle actif
-let sortBy = 'newest';
-let priceMin = 0, priceMax = 9999;
-let searchQ = '';
-let cart = JSON.parse(localStorage.getItem('adrimods-cart') || '[]');
+// ─── DEFAULTS ─────────────────────────────────────────────────────────────────
+const DEFAULT_DEFS = [
+  { id:'bracelet', label:'Bracelet / Case', icon:'⌚', desc:'Boîtiers · Bracelets · Lunettes · Couronnes', hasSizes:true, brands:[
+    {name:'Rolex Style',     models:['GMT-Master','Datejust','Submariner','Explorer','Daytona','Oyster Perpetual']},
+    {name:'Cartier Style',   models:['Santos','Tank','Ballon Bleu','Panthère']},
+    {name:'Patek Philippe',  models:['Nautilus','Aquanaut','Calatrava']},
+    {name:'Audemars Piguet', models:['Royal Oak','Royal Oak Offshore','Concept']},
+    {name:'Tissot Style',    models:['PRX','Le Locle','T-Race']},
+    {name:'Générique',       models:['Mesh Milanais','NATO','Cuir','Rubber','Jubilée']},
+  ]},
+  { id:'cadran', label:'Cadran', icon:'🕐', desc:'Cadrans · Marqueurs · Indices · Textes', hasSizes:false, brands:[
+    {name:'Rolex Style',     models:['GMT-Master','Datejust','Submariner','Explorer','Daytona']},
+    {name:'Cartier Style',   models:['Santos','Tank']},
+    {name:'Patek Philippe',  models:['Nautilus','Aquanaut']},
+    {name:'Audemars Piguet', models:['Royal Oak']},
+    {name:'Tissot Style',    models:['PRX']},
+    {name:'Générique',       models:['Sunburst','Soleillé','Texturé','Uni']},
+  ]},
+  { id:'aiguille', label:'Aiguilles', icon:'🧭', desc:'Heures · Minutes · Secondes · GMT', hasSizes:false, brands:[
+    {name:'Rolex Style',     models:['Mercedes','Alpha','Sword','Baton']},
+    {name:'Cartier Style',   models:['Épée','Flèche']},
+    {name:'Patek Philippe',  models:['Feuille','Bâton']},
+    {name:'Audemars Piguet', models:['Royal Oak']},
+    {name:'Tissot Style',    models:['PRX']},
+    {name:'Générique',       models:['Stick','Leaf','Cathedral','Dauphine']},
+  ]},
+  { id:'mouvement', label:'Mouvements Seiko', icon:'⚙️', desc:'Calibres officiels Seiko', hasSizes:false, brands:[
+    {name:'Série NH',    models:['NH35A','NH36A','NH34','NH38','NH70','NH72']},
+    {name:'Série 4R',    models:['4R35','4R36','4R57','4R68']},
+    {name:'Série 6R',    models:['6R15','6R27','6R35','6R55']},
+    {name:'Série NE',    models:['NE15','NE57','NE88']},
+    {name:'Série VK/VH', models:['VK63','VK64','VH31','VH32']},
+  ]},
+  { id:'complete', label:'Montres Complètes', icon:'✨', desc:'Builds complets · Montres finalisées', hasSizes:true, brands:[
+    {name:'Rolex Style',     models:['GMT-Master','Datejust','Submariner','Explorer','Daytona']},
+    {name:'Cartier Style',   models:['Santos','Tank']},
+    {name:'Patek Philippe',  models:['Nautilus','Aquanaut']},
+    {name:'Audemars Piguet', models:['Royal Oak','Royal Oak Offshore']},
+    {name:'Tissot Style',    models:['PRX']},
+    {name:'Original Build',  models:['Custom']},
+  ]},
+  { id:'accessoire', label:'Accessoires', icon:'🎁', desc:'Boîtes de voyage · Rangement · Étuis · Entretien', hasSizes:false, brands:[
+    {name:'Boîtes de voyage',    models:['1 montre','2 montres','3 montres','4 montres +']},
+    {name:'Boîtes de rangement', models:['Coffret bois','Coffret cuir','Coffret acrylique']},
+    {name:'Étuis & Protection',  models:['Étui souple','Étui rigide','Pochette']},
+    {name:'Entretien',           models:['Outils','Nettoyage','Piles & Batteries']},
+  ]},
+];
 
-// ── LOAD ──────────────────────────────────────────────────────────────────────
-onSnapshot(collection(db,'parts'), snap => {
-  // Only show items explicitly published to the site
-  allProducts = snap.docs.map(d=>({id:d.id,...d.data()}))
-    .filter(p => p.publish && p.img && p.price && p.stock !== 'rupture');
-  renderShop();
-  renderFeatured();
-  updateCartBadge();
-  initPriceRange();
-  renderModelTags();
-}, e=>console.error(e));
+// ─── STATE ─────────────────────────────────────────────────────────────────────
+let DEFS = JSON.parse(JSON.stringify(DEFAULT_DEFS));
+let parts = [], editingId=null, addCtx=null, currentImgUrl=null, customCtx=null, uploadingImg=false;
+let activeSection='bracelet', activeBrand=null, activeModel=null, activeView='catalogue';
+let searchQ='', sortBy='name';
 
-function initPriceRange() {
-  const prices = allProducts.map(p=>parseFloat(p.price)||0).filter(Boolean);
-  if(!prices.length) return;
-  const max = Math.ceil(Math.max(...prices)/10)*10;
-  const sliderMax = document.getElementById('price-max-slider');
-  const sliderMin = document.getElementById('price-min-slider');
-  if(sliderMax){ sliderMax.max=max; if(priceMax===9999) priceMax=max; sliderMax.value=priceMax; }
-  if(sliderMin){ sliderMin.max=max; sliderMin.value=priceMin; }
-  updatePriceDisplay();
+// ─── FIRESTORE LISTENERS ──────────────────────────────────────────────────────
+function startListeners() {
+  onSnapshot(query(collection(db,'parts'),orderBy('ts','desc')), snap => {
+    parts = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderAll();
+  }, e=>console.error(e));
+
+  onSnapshot(collection(db,'customBrands'), snap => {
+    DEFS = JSON.parse(JSON.stringify(DEFAULT_DEFS));
+    snap.docs.forEach(d=>{
+      const dat=d.data(), sec=DEFS.find(s=>s.id===dat.sid);
+      if(!sec) return;
+      let b=sec.brands.find(x=>x.name===dat.brand);
+      if(!b){b={name:dat.brand,models:[]};sec.brands.push(b);}
+      (dat.models||[]).forEach(m=>{if(!b.models.includes(m))b.models.push(m);});
+    });
+    renderAll();
+  }, e=>console.error(e));
 }
 
-function updatePriceDisplay() {
-  const el=document.getElementById('price-range-display');
-  if(el) el.textContent = priceMin+'€ — '+(priceMax>=9999?'Max':priceMax+'€');
+function renderAll() {
+  if(activeView==='catalogue') render();
+  if(activeView==='settings') renderSettings();
 }
 
-// ── PRODUCT CARD ──────────────────────────────────────────────────────────────
-function productCard(p) {
-  const sold = p.stock==='vendu';
-  const isNew = (Date.now()-(p.ts||0)) < 7*24*3600*1000;
-  return `<div class="product-card${sold?' sold':''}" onclick="openProduct('${p.id}')">
-    <div class="card-img-wrap">
-      <img src="${p.img}" alt="${p.name}" loading="lazy">
-      ${sold?'<div class="sold-badge">Vendu</div>':''}
-      ${isNew&&!sold?'<div class="new-badge">Nouveau</div>':''}
+// ─── CLOUDINARY ───────────────────────────────────────────────────────────────
+async function uploadToCloudinary(file) {
+  const fd=new FormData();
+  fd.append('file',file); fd.append('upload_preset',CLOUDINARY_PRESET); fd.append('folder','seiko-mod');
+  const res=await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,{method:'POST',body:fd});
+  if(!res.ok) throw new Error('Upload failed');
+  return (await res.json()).secure_url;
+}
+
+// ─── SAVE PART ────────────────────────────────────────────────────────────────
+window.savePart = async function() {
+  const name=document.getElementById('f-name').value.trim();
+  if(!name){toast('Nom obligatoire',true);return;}
+  if(uploadingImg){toast('Upload en cours…',true);return;}
+  const sec=DEFS.find(s=>s.id===addCtx.sid);
+  const isComplete=addCtx.sid==='complete';
+  const hasSizes=sec?.hasSizes||false;
+  // Ajoute " - Seiko Mod" automatiquement pour les montres complètes
+  const suffix = ' - Seiko Mod';
+  const finalName = isComplete && !name.endsWith(suffix) ? name + suffix : name;
+  const rawSizes = hasSizes?(document.getElementById('f-sizes')?.value||''):'';
+  // Ajoute "mm" automatiquement si pas déjà présent
+  const sizes = rawSizes ? rawSizes.split(',').map(s=>{
+    const t=s.trim();
+    return t && !t.toLowerCase().includes('mm') ? t+'mm' : t;
+  }).filter(Boolean).join(', ') : '';
+  const p={
+    sid:addCtx.sid, brand:addCtx.brand, model:addCtx.model, name:finalName,
+    sizes,
+    buyPrice: document.getElementById('f-buy-price')?.value||'',
+    price:    document.getElementById('f-price').value||'',
+    publish:  document.getElementById('f-publish')?.checked||false,
+    link:     document.getElementById('f-link').value||'',
+    notes:    document.getElementById('f-notes').value||'',
+    stock:    document.getElementById('f-stock').value||'stock',
+    img:currentImgUrl||'', ts:Date.now()
+  };
+  try{
+    setSaveBtn(true);
+    if(editingId){await updateDoc(doc(db,'parts',editingId),p);toast('Pièce modifiée ✓');}
+    else{await addDoc(collection(db,'parts'),p);toast('Pièce ajoutée ✓');}
+    closeModal('add-modal');
+  }catch(e){toast('Erreur : '+e.message,true);}
+  finally{setSaveBtn(false);}
+};
+
+window.deletePart = async function(id) {
+  if(!confirm('Supprimer cette pièce ?')) return;
+  await deleteDoc(doc(db,'parts',id));
+  closeModal('detail-modal'); toast('Pièce supprimée');
+};
+
+window.duplicatePart = async function(id) {
+  const p=parts.find(x=>x.id===id); if(!p) return;
+  const{id:_,...data}=p;
+  await addDoc(collection(db,'parts'),{...data,name:data.name+' (copie)',ts:Date.now()});
+  closeModal('detail-modal'); toast('Pièce dupliquée ✓');
+};
+
+// ─── CALCULATOR ───────────────────────────────────────────────────────────────
+window.calcPrice = function() {
+  const achat    = parseFloat(document.getElementById('f-buy-price')?.value)||0;
+  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||12.5;
+  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||20;
+  const ship_out = parseFloat(document.getElementById('calc-ship-out')?.value)||5;
+  const vinted   = document.getElementById('calc-vinted')?.checked;
+  // Prix de vente = ce qui est dans le champ prix (189,90€ par défaut)
+  const prixVente = parseFloat(document.getElementById('f-price')?.value)||189.90;
+  const cout = achat + ship_in + labor + ship_out;
+  let prixNet = vinted ? (prixVente*(1-0.05)-0.70) : prixVente;
+  const benef = prixNet - cout;
+  const marge = cout > 0 ? (prixNet/cout) : 0;
+  const pct   = prixNet > 0 ? ((benef/prixNet)*100).toFixed(0) : 0;
+  document.getElementById('calc-cout').textContent    = cout.toFixed(2)+'€';
+  document.getElementById('calc-benefice').textContent= benef.toFixed(2)+'€';
+  document.getElementById('calc-marge-pct').textContent= pct+'%';
+  document.getElementById('calc-result').textContent  = prixVente.toFixed(2)+'€';
+  document.getElementById('calc-marge-val').textContent= marge.toFixed(2)+'x';
+};
+
+// Reverse calc: when user manually types a price, update the margin slider
+window.onManualPriceChange = function() {
+  const manualPrice = parseFloat(document.getElementById('f-price')?.value)||0;
+  const achat    = parseFloat(document.getElementById('f-buy-price')?.value)||0;
+  const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||12.5;
+  const labor    = parseFloat(document.getElementById('calc-labor')?.value)||20;
+  const ship_out = parseFloat(document.getElementById('calc-ship-out')?.value)||5;
+  const vinted   = document.getElementById('calc-vinted')?.checked;
+  const cout = achat+ship_in+labor+ship_out;
+  if(cout<=0||manualPrice<=0) return;
+  let effectivePrice = manualPrice;
+  if(vinted) effectivePrice = manualPrice*(1-0.05)-0.70;
+  const newMarge = effectivePrice/cout;
+  const slider = document.getElementById('calc-marge');
+  if(slider){
+    const clamped = Math.min(3.5,Math.max(1.2,newMarge));
+    slider.value = clamped.toFixed(2);
+    document.getElementById('calc-marge-val').textContent=clamped.toFixed(1)+'x';
+  }
+  const benef=manualPrice-cout, pct=cout>0?((benef/manualPrice)*100).toFixed(0):0;
+  document.getElementById('calc-cout').textContent=cout.toFixed(2)+'€';
+  document.getElementById('calc-benefice').textContent=benef.toFixed(2)+'€';
+  document.getElementById('calc-marge-pct').textContent=pct+'%';
+  document.getElementById('calc-result').textContent=manualPrice.toFixed(2)+'€';
+};
+window.applyCalcPrice = function() {
+  const v=document.getElementById('calc-result').textContent;
+  document.getElementById('f-price').value=parseFloat(v).toFixed(2);
+  toast('Prix appliqué ✓');
+};
+
+// ─── DELETE BRAND/MODEL ───────────────────────────────────────────────────────
+window.deleteModel = async function(sid,brand,model) {
+  const cnt=parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model).length;
+  if(!confirm(`Supprimer "${model}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
+  for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model)) await deleteDoc(doc(db,'parts',p.id));
+  const snap=await getDocs(collection(db,'customBrands'));
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand&&dat.models?.includes(model)){const nm=dat.models.filter(m=>m!==model);nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));}}
+  const b=DEFS.find(s=>s.id===sid)?.brands.find(x=>x.name===brand);
+  if(b) b.models=b.models.filter(m=>m!==model);
+  if(activeModel===model) activeModel=null;
+  toast(`"${model}" supprimé`);
+  if(activeView==='settings') renderSettings(); else render();
+};
+
+window.deleteBrand = async function(sid,brand) {
+  const cnt=parts.filter(p=>p.sid===sid&&p.brand===brand).length;
+  if(!confirm(`Supprimer "${brand}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
+  for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand)) await deleteDoc(doc(db,'parts',p.id));
+  const snap=await getDocs(collection(db,'customBrands'));
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand)await deleteDoc(doc(db,'customBrands',d.id));}
+  const sec=DEFS.find(s=>s.id===sid); if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
+  if(activeBrand===brand){activeBrand=null;activeModel=null;}
+  toast(`"${brand}" supprimée`);
+  if(activeView==='settings') renderSettings(); else render();
+};
+
+// ─── CUSTOM BRAND/MODEL ───────────────────────────────────────────────────────
+window.saveCustom = async function() {
+  const val=document.getElementById('custom-inp').value.trim(); if(!val) return;
+  const ctx=customCtx, sec=DEFS.find(s=>s.id===ctx.sid);
+  try{
+    if(ctx.type==='brand'){
+      if(sec.brands.find(b=>b.name===val)){toast('Déjà existant',true);return;}
+      await addDoc(collection(db,'customBrands'),{sid:ctx.sid,brand:val,models:[]});
+      toast(`"${val}" ajoutée ✓`);
+    } else {
+      await addDoc(collection(db,'customBrands'),{sid:ctx.sid,brand:ctx.brand,models:[val]});
+      toast(`"${val}" ajouté ✓`);
+    }
+    closeModal('custom-modal');
+  }catch(e){toast('Erreur : '+e.message,true);}
+};
+
+// ─── RENAME (Settings) ───────────────────────────────────────────────────────
+window.saveRename = async function() {
+  const type=document.getElementById('rename-type').value;
+  const newName=document.getElementById('rename-inp').value.trim();
+  if(!newName){toast('Nom obligatoire',true);return;}
+  const ctx=window._renameCtx;
+  try{
+    if(type==='section'){
+      // update label in DEFS locally (section ids stay same, only label changes)
+      const sec=DEFS.find(s=>s.id===ctx.sid);
+      if(sec) sec.label=newName;
+      // Store in Firestore settings
+      await setDoc(doc(db,'settings','sectionLabels'),{[ctx.sid]:newName},{merge:true});
+      toast(`Section renommée en "${newName}" ✓`);
+    } else if(type==='brand'){
+      // Rename all parts with old brand name
+      const toUpdate=parts.filter(p=>p.sid===ctx.sid&&p.brand===ctx.brand);
+      for(const p of toUpdate) await updateDoc(doc(db,'parts',p.id),{brand:newName});
+      // Update customBrands
+      const snap=await getDocs(collection(db,'customBrands'));
+      for(const d of snap.docs){const dat=d.data();if(dat.sid===ctx.sid&&dat.brand===ctx.brand)await updateDoc(doc(db,'customBrands',d.id),{brand:newName});}
+      const sec=DEFS.find(s=>s.id===ctx.sid); const b=sec?.brands.find(x=>x.name===ctx.brand);
+      if(b) b.name=newName;
+      if(activeBrand===ctx.brand) activeBrand=newName;
+      toast(`Marque renommée en "${newName}" ✓`);
+    } else if(type==='model'){
+      const toUpdate=parts.filter(p=>p.sid===ctx.sid&&p.brand===ctx.brand&&p.model===ctx.model);
+      for(const p of toUpdate) await updateDoc(doc(db,'parts',p.id),{model:newName});
+      const snap=await getDocs(collection(db,'customBrands'));
+      for(const d of snap.docs){const dat=d.data();if(dat.sid===ctx.sid&&dat.brand===ctx.brand&&dat.models?.includes(ctx.model)){const nm=dat.models.map(m=>m===ctx.model?newName:m);await updateDoc(doc(db,'customBrands',d.id),{models:nm});}}
+      const b=DEFS.find(s=>s.id===ctx.sid)?.brands.find(x=>x.name===ctx.brand);
+      if(b) b.models=b.models.map(m=>m===ctx.model?newName:m);
+      if(activeModel===ctx.model) activeModel=newName;
+      toast(`Modèle renommé en "${newName}" ✓`);
+    }
+    closeModal('rename-modal');
+    if(activeView==='settings') renderSettings(); else render();
+  }catch(e){toast('Erreur : '+e.message,true);}
+};
+
+// Load section label overrides from Firestore on init
+async function loadSectionLabels(){
+  try{
+    const snap=await getDocs(collection(db,'settings'));
+    snap.docs.forEach(d=>{
+      if(d.id==='sectionLabels'){
+        const data=d.data();
+        Object.keys(data).forEach(sid=>{const sec=DEFS.find(s=>s.id===sid);if(sec)sec.label=data[sid];});
+      }
+    });
+  }catch(e){}
+}
+
+// ─── IMAGE ────────────────────────────────────────────────────────────────────
+window.handleImg = async function(input) {
+  const file=input.files[0]; if(!file) return;
+  uploadingImg=true; setImgLoading(true);
+  try{
+    currentImgUrl=await uploadToCloudinary(file);
+    document.getElementById('img-prev').src=currentImgUrl;
+    document.getElementById('img-prev').style.display='block';
+    document.getElementById('img-ph').style.display='none';
+    document.getElementById('img-zone').classList.add('filled');
+    toast('Photo uploadée ✓');
+  }catch(e){toast('Erreur upload',true);}
+  finally{uploadingImg=false;setImgLoading(false);}
+};
+function setImgLoading(on){
+  document.getElementById('img-ph').innerHTML=on
+    ?'<div class="spinner"></div><div class="img-hint">Upload…</div>'
+    :'<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--text3)"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg><div class="img-hint">Cliquer pour ajouter</div>';
+}
+
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+window.setSection  = function(s){
+  activeSection=s; activeBrand=null; activeModel=null; searchQ='';
+  if(activeView!=='catalogue'){
+    activeView='catalogue';
+    document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view==='catalogue'));
+  }
+  render();
+};
+window.setBrand    = b=>{activeBrand=b;activeModel=null;searchQ='';render();}
+window.setModel    = m=>{activeModel=m;searchQ='';render();}
+window.goBack      = ()=>{if(activeModel)activeModel=null;else if(activeBrand)activeBrand=null;render();}
+window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();
+  document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render(){
+  renderHeader();
+  if(!activeBrand)      renderBrandList();
+  else if(!activeModel) renderModelList();
+  else                  renderPartGrid();
+}
+
+function renderHeader(){
+  const sec=DEFS.find(s=>s.id===activeSection);
+  const total=parts.length, val=parts.reduce((a,p)=>a+(parseFloat(p.price)||0),0);
+  document.getElementById('hdr-total').textContent=total;
+  document.getElementById('hdr-val').textContent=val.toFixed(2)+'€';
+  document.getElementById('nav-tabs').innerHTML=DEFS.map(s=>{
+    const cnt=parts.filter(p=>p.sid===s.id).length;
+    return `<button class="nav-tab${activeSection===s.id?' active':''}" onclick="setSection('${s.id}')">
+      <span>${s.icon}</span><span class="tab-lbl">${s.label}</span>${cnt?`<span class="tab-cnt">${cnt}</span>`:''}
+    </button>`;
+  }).join('');
+  let bc=`<span class="bc-item">${sec.label}</span>`;
+  if(activeBrand) bc+=`<span class="bc-sep">›</span><span class="bc-item">${activeBrand}</span>`;
+  if(activeModel) bc+=`<span class="bc-sep">›</span><span class="bc-item">${activeModel}</span>`;
+  document.getElementById('breadcrumb').innerHTML=bc;
+  document.getElementById('back-btn').style.display=activeBrand?'flex':'none';
+}
+
+// ─── BRAND TILES ──────────────────────────────────────────────────────────────
+function renderBrandList(){
+  const sec=DEFS.find(s=>s.id===activeSection);
+  document.getElementById('main').innerHTML=`
+    <div class="level-header">
+      <div><h2 class="level-title">${sec.icon} ${sec.label}</h2><p class="level-sub">${sec.desc}</p></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline sm" onclick="openRenameSection('${sec.id}','${esc(sec.label)}')">✎ Renommer</button>
+        <button class="btn-gold" onclick="openAddBrand('${sec.id}')">+ Marque</button>
+      </div>
     </div>
-    <div class="card-body">
-      <div class="card-name">${p.name}</div>
-      <div class="card-footer">
-        <div class="card-price">${sold?'<span class="sold-price">Vendu</span>':parseFloat(p.price).toFixed(2)+' €'}</div>
-        ${!sold?`<button class="card-btn" onclick="event.stopPropagation();addToCart('${p.id}')">+ Panier</button>`:''}
+    <div class="tile-grid">${sec.brands.map(brand=>{
+      const cnt=parts.filter(p=>p.sid===sec.id&&p.brand===brand.name).length;
+      const cover=parts.find(p=>p.sid===sec.id&&p.brand===brand.name&&p.img);
+      return `<div class="brand-tile" onclick="setBrand('${esc(brand.name)}')">
+        <div class="tile-cover">${cover?`<img src="${cover.img}" loading="lazy">`:`<span class="tile-icon">${sec.icon}</span>`}</div>
+        <div class="tile-body"><div class="tile-name">${brand.name}</div><div class="tile-meta">${brand.models.length} modèle${brand.models.length>1?'s':''} · ${cnt} pièce${cnt!==1?'s':''}</div></div>
+        <div class="tile-actions" onclick="event.stopPropagation()">
+          <button class="tile-act-btn" onclick="openRenameItem('brand','${sec.id}','${esc(brand.name)}')" title="Renommer">✎</button>
+          <button class="tile-act-btn" onclick="openAddModel('${sec.id}','${esc(brand.name)}')" title="Ajouter un modèle">+</button>
+          <button class="tile-act-btn del" onclick="deleteBrand('${sec.id}','${esc(brand.name)}')" title="Supprimer">✕</button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+}
+
+// ─── MODEL TILES ──────────────────────────────────────────────────────────────
+function renderModelList(){
+  const sec=DEFS.find(s=>s.id===activeSection);
+  const brand=sec.brands.find(b=>b.name===activeBrand);
+  if(!brand){activeBrand=null;render();return;}
+  document.getElementById('main').innerHTML=`
+    <div class="level-header">
+      <div><h2 class="level-title">${activeBrand}</h2><p class="level-sub">${sec.label} · ${brand.models.length} modèle${brand.models.length>1?'s':''}</p></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline sm" onclick="openRenameItem('brand','${sec.id}','${esc(activeBrand)}')">✎ Renommer</button>
+        <button class="btn-gold" onclick="openAddModel('${sec.id}','${esc(activeBrand)}')">+ Modèle</button>
+      </div>
+    </div>
+    <div class="tile-grid">${brand.models.map(model=>{
+      const mParts=parts.filter(p=>p.sid===sec.id&&p.brand===activeBrand&&p.model===model);
+      const cover=mParts.find(p=>p.img);
+      return `<div class="brand-tile" onclick="setModel('${esc(model)}')">
+        <div class="tile-cover">${cover?`<img src="${cover.img}" loading="lazy">`:`<span class="tile-icon">${sec.icon}</span>`}</div>
+        <div class="tile-body"><div class="tile-name">${model}</div><div class="tile-meta">${mParts.length} pièce${mParts.length!==1?'s':''}</div></div>
+        <div class="tile-actions" onclick="event.stopPropagation()">
+          <button class="tile-act-btn" onclick="openRenameItem('model','${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Renommer">✎</button>
+          <button class="tile-act-btn" onclick="openAddPart('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Ajouter">+</button>
+          <button class="tile-act-btn del" onclick="deleteModel('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Supprimer">✕</button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+}
+
+// ─── PART GRID ────────────────────────────────────────────────────────────────
+function renderPartGrid(){
+  const sec=DEFS.find(s=>s.id===activeSection);
+  document.getElementById('main').innerHTML=`
+    <div class="grid-toolbar">
+      <div class="grid-toolbar-left">
+        <div class="search-wrap">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input class="search-inp" id="search-inp" type="text" placeholder="Rechercher…" oninput="onSearch(this.value)">
+          <button class="search-clear" id="search-clear-btn" style="display:none" onclick="clearSearch()">✕</button>
+        </div>
+        <span class="grid-count" id="grid-count-el"></span>
+      </div>
+      <div class="grid-toolbar-right">
+        <select class="filter-sel" onchange="onSort(this.value)">
+          <option value="name">Nom A→Z</option>
+          <option value="price-asc">Prix croissant</option>
+          <option value="price-desc">Prix décroissant</option>
+          <option value="date">Plus récents</option>
+        </select>
+        <button class="btn-gold sm" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Pièce</button>
+      </div>
+    </div>
+    <div id="grid-results"></div>`;
+  renderGridOnly();
+}
+
+function renderGridOnly(){
+  const sec=DEFS.find(s=>s.id===activeSection);
+  let filtered=parts.filter(p=>p.sid===activeSection&&p.brand===activeBrand&&p.model===activeModel);
+  if(searchQ){const q=searchQ.toLowerCase();filtered=filtered.filter(p=>p.name.toLowerCase().includes(q)||(p.notes||'').toLowerCase().includes(q));}
+  filtered.sort((a,b)=>{
+    if(sortBy==='price-asc') return (parseFloat(a.price)||0)-(parseFloat(b.price)||0);
+    if(sortBy==='price-desc') return (parseFloat(b.price)||0)-(parseFloat(a.price)||0);
+    if(sortBy==='date') return (b.ts||0)-(a.ts||0);
+    return a.name.localeCompare(b.name);
+  });
+  const cnt=document.getElementById('grid-count-el');
+  if(cnt) cnt.textContent=`${filtered.length} résultat${filtered.length!==1?'s':''}`;
+  const grid=document.getElementById('grid-results'); if(!grid) return;
+  if(!filtered.length){
+    grid.innerHTML=`<div class="empty-state"><div class="empty-icon">${sec.icon}</div><div class="empty-title">${searchQ?'Aucun résultat':'Aucune pièce'}</div><p class="empty-sub">${searchQ?'Modifiez votre recherche':'Ajoutez votre première pièce'}</p>${!searchQ?`<button class="btn-gold" onclick="openAddPart('${activeSection}','${esc(activeBrand)}','${esc(activeModel)}')">+ Ajouter</button>`:''}</div>`;
+    return;
+  }
+  grid.innerHTML=`<div class="product-grid">${filtered.map(p=>{
+    const sc=p.stock==='rupture'?'red':p.stock==='commande'?'amber':p.stock==='vendu'?'purple':'green';
+    const sl=p.stock==='rupture'?'Rupture':p.stock==='commande'?'Commande':p.stock==='vendu'?'Vendu':'En stock';
+    return `<div class="product-card${p.stock==='vendu'?' sold':''}" onclick="openDetail('${p.id}')">
+      <div class="product-img">${p.img
+        ?`<img src="${p.img}" loading="lazy">`
+        :`<div class="product-placeholder"><span style="font-size:28px;opacity:.15">${sec.icon}</span><div class="placeholder-name">${p.name}</div></div>`}
+        ${p.stock==='vendu'?'<div class="sold-overlay">VENDU</div>':''}
+        ${p.publish?'<div class="publish-badge">🌐</div>':''}
+      </div>
+      <div class="product-body">
+        <div class="product-name">${p.name}</div>
+        ${p.sizes?`<div class="product-sku">${p.sizes}</div>`:''}
+        <div class="product-footer">
+          ${(p.sid==='complete'||p.sid==='accessoire')&&p.price?`<div class="product-price">${parseFloat(p.price).toFixed(2)}€</div>`:'<div></div>'}
+          <span class="stock-dot ${sc}" title="${sl}"></span>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+window.onSearch = v=>{searchQ=v;const b=document.getElementById('search-clear-btn');if(b)b.style.display=v?'block':'none';renderGridOnly();}
+window.clearSearch = ()=>{searchQ='';const i=document.getElementById('search-inp');if(i)i.value='';const b=document.getElementById('search-clear-btn');if(b)b.style.display='none';renderGridOnly();}
+window.onSort = v=>{sortBy=v;renderGridOnly();}
+
+// ─── SETTINGS PAGE ────────────────────────────────────────────────────────────
+function renderSettings(){
+  const main=document.getElementById('main');
+  let html=`<div class="settings-page">
+    <h2 class="settings-title">⚙️ Paramètres — Renommer tout</h2>
+    <p class="settings-sub">Renommez les sections, marques et modèles. Les pièces existantes sont automatiquement mises à jour.</p>
+    <div class="settings-sections-grid">`;
+
+  DEFS.forEach(sec=>{
+    html+=`<div class="settings-section">
+      <div class="settings-sec-header">
+        <span class="settings-sec-icon">${sec.icon}</span>
+        <span class="settings-sec-name">${sec.label}</span>
+        <button class="btn-rename" onclick="openRenameSection('${sec.id}','${esc(sec.label)}')">✎ Renommer section</button>
+      </div>
+      <div class="settings-brands-grid">`;
+    sec.brands.forEach(brand=>{
+      html+=`<div class="settings-brand-card">
+        <div class="settings-brand-hdr">
+          <span class="settings-brand-lbl">📁 ${brand.name}</span>
+          <div style="display:flex;gap:3px">
+            <button class="btn-rename xs" onclick="openRenameItem('brand','${sec.id}','${esc(brand.name)}')">✎</button>
+            <button class="btn-rename xs del" onclick="deleteBrand('${sec.id}','${esc(brand.name)}')" title="Supprimer">✕</button>
+          </div>
+        </div>
+        <div class="settings-models-list">`;
+      brand.models.forEach(model=>{
+        const cnt=parts.filter(p=>p.sid===sec.id&&p.brand===brand.name&&p.model===model).length;
+        html+=`<div class="settings-model-chip">
+          <span>${model}</span>
+          ${cnt?`<span class="chip-cnt">${cnt}</span>`:''}
+          <button onclick="openRenameItem('model','${sec.id}','${esc(brand.name)}','${esc(model)}')" title="Renommer">✎</button>
+          <button class="del-model-btn" onclick="deleteModel('${sec.id}','${esc(brand.name)}','${esc(model)}')" title="Supprimer">✕</button>
+        </div>`;
+      });
+      html+=`</div></div>`;
+    });
+    html+=`</div></div>`;
+  });
+  html+=`</div></div>`;
+  main.innerHTML=html;
+}
+
+// ─── MODALS ───────────────────────────────────────────────────────────────────
+window.openAddPart = function(sid,brand,model){
+  editingId=null; addCtx={sid,brand,model}; currentImgUrl=null;
+  const sec=DEFS.find(s=>s.id===sid);
+  const isComplete=sid==='complete';
+  const hasSizes=sec?.hasSizes||false;
+  document.getElementById('add-title').textContent='Nouvelle pièce';
+  document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${brand} · ${model}`;
+  ['f-name','f-link','f-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['f-sizes','f-buy-price'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const fp=document.getElementById('f-publish'); if(fp) fp.checked=false;
+  document.getElementById('f-stock').value='stock';
+  // Prix auto 189,90€ pour montres complètes
+  document.getElementById('f-price').value = isComplete ? '189.90' : '';
+  const showResale=sid==='complete'||sid==='accessoire';
+  document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
+  document.getElementById('buy-price-section').style.display='block';
+  document.getElementById('price-resale-section').style.display=showResale?'block':'none';
+  document.getElementById('calc-section').style.display=isComplete?'block':'none';
+  if(isComplete){
+    // Reset valeurs par défaut
+    const si=document.getElementById('calc-ship-in'); if(si) si.value='12.5';
+    const lb=document.getElementById('calc-labor');   if(lb) lb.value='20';
+    const so=document.getElementById('calc-ship-out'); if(so) so.value='5';
+    const vt=document.getElementById('calc-vinted');  if(vt) vt.checked=false;
+    document.getElementById('calc-cout').textContent='—';
+    document.getElementById('calc-benefice').textContent='—';
+    document.getElementById('calc-marge-pct').textContent='—';
+    document.getElementById('calc-result').textContent='—';
+    document.getElementById('calc-marge-val').textContent='—';
+  }
+  resetImg(); openModal('add-modal');
+  setTimeout(()=>document.getElementById('f-name').focus(),80);
+};
+
+window.openEditPart = function(id){
+  const p=parts.find(x=>x.id===id); if(!p) return;
+  closeModal('detail-modal');
+  editingId=id; addCtx={sid:p.sid,brand:p.brand,model:p.model}; currentImgUrl=p.img||null;
+  const sec=DEFS.find(s=>s.id===p.sid);
+  const isComplete=p.sid==='complete';
+  const hasSizes=sec?.hasSizes||false;
+  document.getElementById('add-title').textContent='Modifier la pièce';
+  document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${p.brand} · ${p.model}`;
+  document.getElementById('f-name').value=p.name;
+  const sp=document.getElementById('f-sizes'); if(sp) sp.value=p.sizes||'';
+  const bp=document.getElementById('f-buy-price'); if(bp) bp.value=p.buyPrice||'';
+  document.getElementById('f-price').value=p.price||'';
+  const fp=document.getElementById('f-publish'); if(fp) fp.checked=p.publish||false;
+  document.getElementById('f-link').value=p.link||'';
+  document.getElementById('f-notes').value=p.notes||'';
+  document.getElementById('f-stock').value=p.stock||'stock';
+  const showResaleEdit=p.sid==='complete'||p.sid==='accessoire';
+  document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
+  document.getElementById('buy-price-section').style.display='block';
+  document.getElementById('price-resale-section').style.display=showResaleEdit?'block':'none';
+  document.getElementById('calc-section').style.display=isComplete?'block':'none';
+  if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
+  else resetImg();
+  openModal('add-modal');
+  if(isComplete){
+    // Reset valeurs par défaut et recalcule
+    const si=document.getElementById('calc-ship-in'); if(si) si.value='12.5';
+    const lb=document.getElementById('calc-labor');   if(lb) lb.value='20';
+    const so=document.getElementById('calc-ship-out'); if(so) so.value='5';
+    const vt=document.getElementById('calc-vinted');  if(vt) vt.checked=false;
+    // Calcule immédiatement avec le prix d'achat sauvegardé
+    if(p.buyPrice) calcPrice();
+  }
+};
+
+window.openDetail = function(id){
+  const p=parts.find(x=>x.id===id); if(!p) return;
+  const sec=DEFS.find(s=>s.id===p.sid);
+  const stockMap={stock:'En stock',commande:'En commande',rupture:'Rupture',vendu:'Vendu'};
+  const stockClsMap={stock:'green',commande:'amber',rupture:'red',vendu:'purple'};
+  const f=(l,v,full)=>`<div class="dfield${full?' full':''}"><div class="dfl">${l}</div><div class="dfv">${v}</div></div>`;
+  const showResaleDetail=p.sid==='complete'||p.sid==='accessoire';
+  let margeHtml='';
+  if(showResaleDetail&&p.buyPrice&&p.price){
+    const a=parseFloat(p.buyPrice)||0,v=parseFloat(p.price)||0,b=v-a,pct=a>0?((b/v)*100).toFixed(0):0;
+    margeHtml=`<div class="marge-strip">
+      <div class="marge-item"><div class="marge-lbl">Achat perso</div><div class="marge-val buy">${a.toFixed(2)}€</div></div>
+      <div class="marge-arrow">→</div>
+      <div class="marge-item"><div class="marge-lbl">Revente client</div><div class="marge-val sell">${v.toFixed(2)}€</div></div>
+      <div class="marge-arrow">→</div>
+      <div class="marge-item"><div class="marge-lbl">Bénéfice</div><div class="marge-val profit">+${b.toFixed(2)}€ (${pct}%)</div></div>
+    </div>`;
+  }
+  document.getElementById('detail-body').innerHTML=`
+    <div class="detail-hero">${p.img?`<img src="${p.img}">`:`<div class="hero-placeholder"><span style="font-size:52px;opacity:.15">${sec.icon}</span><div class="hero-placeholder-name">${p.name}</div></div>`}</div>
+    <div class="modal-hdr">
+      <div>
+        <div class="detail-name">${p.name}</div>
+        <div class="detail-path">${sec.label} · ${p.brand} · ${p.model}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        ${showResaleDetail&&p.price?`<div class="detail-price">${parseFloat(p.price).toFixed(2)}<span>€</span></div>`:''}
+        <button class="modal-x" onclick="closeModal('detail-modal')">✕</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+        <span class="stock-badge ${stockClsMap[p.stock]||'green'}">${stockMap[p.stock]||'En stock'}</span>
+        ${p.publish?'<span class="publish-pill">🌐 Sur Adri Mods</span>':'<span class="publish-pill off">🔒 Privé</span>'}
+      </div>
+      ${margeHtml}
+      <div class="detail-fields">
+        ${p.sizes?f('Tailles',p.sizes):''}
+        ${p.buyPrice?f('Mon prix d\'achat',`${parseFloat(p.buyPrice).toFixed(2)}€`):''}
+        ${showResaleDetail&&p.price?f('Prix client (revente)',`${parseFloat(p.price).toFixed(2)}€`):''}
+        ${p.link?f('Fournisseur',`<a href="${p.link}" target="_blank">↗ Ouvrir</a>`,true):''}
+      </div>
+      ${p.notes?`<div class="detail-notes"><div class="dfl">Notes</div><p>${p.notes.replace(/\n/g,'<br>')}</p></div>`:''}
+      <div class="detail-actions">
+        <button class="btn-outline sm" onclick="closeModal('detail-modal')">Fermer</button>
+        <button class="btn-outline sm blue" onclick="openEditPart('${p.id}')">✎ Modifier</button>
+        <button class="btn-outline sm" onclick="duplicatePart('${p.id}')">⧉ Dupliquer</button>
+        <button class="btn-outline sm red" onclick="deletePart('${p.id}')">✕ Supprimer</button>
+        ${p.link?`<button class="btn-gold sm" onclick="window.open('${p.link}','_blank')">↗ Fournisseur</button>`:''}
+      </div>
+    </div>`;
+  openModal('detail-modal');
+};
+
+window.openAddBrand = function(sid){
+  customCtx={type:'brand',sid};
+  document.getElementById('custom-title').textContent='Nouvelle marque';
+  document.getElementById('custom-lbl').textContent='Nom de la marque';
+  document.getElementById('custom-inp').placeholder='ex: Omega Style…';
+  document.getElementById('custom-inp').value='';
+  openModal('custom-modal');
+  setTimeout(()=>document.getElementById('custom-inp').focus(),80);
+};
+window.openAddModel = function(sid,brand){
+  customCtx={type:'model',sid,brand};
+  document.getElementById('custom-title').textContent=brand;
+  document.getElementById('custom-lbl').textContent='Nom du modèle';
+  document.getElementById('custom-inp').placeholder='ex: Speedmaster…';
+  document.getElementById('custom-inp').value='';
+  openModal('custom-modal');
+  setTimeout(()=>document.getElementById('custom-inp').focus(),80);
+};
+
+window.openRenameSection = function(sid,label){
+  window._renameCtx={sid};
+  document.getElementById('rename-type').value='section';
+  document.getElementById('rename-title').textContent='Renommer la section';
+  document.getElementById('rename-current').textContent=`Actuel : "${label}"`;
+  document.getElementById('rename-inp').value=label;
+  openModal('rename-modal');
+  setTimeout(()=>document.getElementById('rename-inp').select(),80);
+};
+window.openRenameItem = function(type,sid,brand,model){
+  window._renameCtx={sid,brand,model};
+  document.getElementById('rename-type').value=type;
+  const current=type==='brand'?brand:model;
+  document.getElementById('rename-title').textContent=type==='brand'?'Renommer la marque':'Renommer le modèle';
+  document.getElementById('rename-current').textContent=`Actuel : "${current}"`;
+  document.getElementById('rename-inp').value=current;
+  openModal('rename-modal');
+  setTimeout(()=>document.getElementById('rename-inp').select(),80);
+};
+
+// ─── EXPORT/IMPORT ────────────────────────────────────────────────────────────
+window.exportJSON = async function(){
+  const blob=new Blob([JSON.stringify({parts},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='seiko-mod.json';a.click();toast('Export ✓');
+};
+window.importJSON = function(input){
+  const file=input.files[0]; if(!file) return;
+  const r=new FileReader();
+  r.onload=async e=>{
+    try{const d=JSON.parse(e.target.result);if(!d.parts) return;
+      for(const p of d.parts){const{id:_,...data}=p;await addDoc(collection(db,'parts'),{...data,ts:data.ts||Date.now()});}
+      toast(`${d.parts.length} pièces importées ✓`);
+    }catch(e){toast('Erreur JSON',true);}
+  };
+  r.readAsText(file); input.value='';
+};
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function esc(s){return(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function openModal(id){document.getElementById(id).classList.remove('hidden');}
+function closeModal(id){document.getElementById(id).classList.add('hidden');}
+window.closeModal=closeModal;
+function resetImg(){currentImgUrl=null;document.getElementById('img-prev').style.display='none';setImgLoading(false);document.getElementById('img-zone').classList.remove('filled');document.getElementById('img-file').value='';}
+function setSaveBtn(on){const b=document.getElementById('save-btn');b.textContent=on?'Enregistrement…':'Enregistrer';b.disabled=on;}
+let _tt;
+window.toast=function(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(err?'err':'ok');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2600);}
+
+document.addEventListener('click',e=>{['add-modal','detail-modal','custom-modal','rename-modal'].forEach(id=>{const el=document.getElementById(id);if(el&&e.target===el)closeModal(id);});});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')['add-modal','detail-modal','custom-modal','rename-modal'].forEach(closeModal);
+  if(e.key==='Enter'&&document.activeElement.tagName!=='TEXTAREA'){
+    if(!document.getElementById('add-modal').classList.contains('hidden'))savePart();
+    if(!document.getElementById('custom-modal').classList.contains('hidden'))saveCustom();
+    if(!document.getElementById('rename-modal').classList.contains('hidden'))saveRename();
+  }
+});
+
+// ─── THEME ────────────────────────────────────────────────────────────────────
+(function(){
+  if(localStorage.getItem('smtheme')==='light'){
+    document.body.classList.add('light');
+    const b=document.getElementById('theme-btn');if(b)b.textContent='🌙';
+  }
+})();
+window.toggleTheme=function(){
+  const isLight=document.body.classList.toggle('light');
+  localStorage.setItem('smtheme',isLight?'light':'dark');
+  const b=document.getElementById('theme-btn');if(b)b.textContent=isLight?'🌙':'☀';
+};
+
+// ─── STATISTICS VIEW ──────────────────────────────────────────────────────────
+function renderStats(){
+  const main=document.getElementById('main');
+  const total=parts.length;
+  const totalVal=parts.reduce((a,p)=>a+(parseFloat(p.price)||0),0);
+  const totalBuy=parts.reduce((a,p)=>a+(parseFloat(p.buyPrice)||0),0);
+  const totalProfit=totalVal-totalBuy;
+  const published=parts.filter(p=>p.publish).length;
+  const inStock=parts.filter(p=>p.stock==='stock').length;
+  const sold=parts.filter(p=>p.stock==='vendu').length;
+  // Top 5 most expensive
+  const top5=[...parts].filter(p=>p.price).sort((a,b)=>(parseFloat(b.price)||0)-(parseFloat(a.price)||0)).slice(0,5);
+  // By section
+  const bySec=DEFS.map(s=>{
+    const sp=parts.filter(p=>p.sid===s.id);
+    const val=sp.reduce((a,p)=>a+(parseFloat(p.price)||0),0);
+    return{label:s.label,icon:s.icon,count:sp.length,val};
+  }).filter(s=>s.count>0).sort((a,b)=>b.count-a.count);
+  // Price history sparklines: last 30 prices added (by ts)
+  const avgMargin=totalBuy>0?((totalProfit/totalVal)*100).toFixed(1):0;
+
+  main.innerHTML=`<div class="stats-page">
+    <h2 class="settings-title">📊 Statistiques</h2>
+    <div class="stats-kpi-grid">
+      <div class="kpi-card"><div class="kpi-icon">📦</div><div class="kpi-val">${total}</div><div class="kpi-lbl">Pièces totales</div></div>
+      <div class="kpi-card"><div class="kpi-icon">💰</div><div class="kpi-val">${totalVal.toFixed(0)}€</div><div class="kpi-lbl">Valeur catalogue</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🏷️</div><div class="kpi-val">${totalBuy.toFixed(0)}€</div><div class="kpi-lbl">Total investi</div></div>
+      <div class="kpi-card accent"><div class="kpi-icon">📈</div><div class="kpi-val">${totalProfit.toFixed(0)}€</div><div class="kpi-lbl">Bénéfice potentiel</div></div>
+      <div class="kpi-card"><div class="kpi-icon">%</div><div class="kpi-val">${avgMargin}%</div><div class="kpi-lbl">Marge moyenne</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🌐</div><div class="kpi-val">${published}</div><div class="kpi-lbl">Publiés Adri Mods</div></div>
+      <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-val">${inStock}</div><div class="kpi-lbl">En stock</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🏷️</div><div class="kpi-val">${sold}</div><div class="kpi-lbl">Vendus</div></div>
+    </div>
+    <div class="stats-two-col">
+      <div class="stats-card">
+        <div class="stats-card-title">🏆 Pièces les plus chères</div>
+        ${top5.map((p,i)=>`<div class="stats-row">
+          <span class="stats-rank">${i+1}</span>
+          ${p.img?`<img src="${p.img}" class="stats-thumb">`:'<div class="stats-thumb-ph"></div>'}
+          <span class="stats-row-name">${p.name}</span>
+          <span class="stats-row-price">${parseFloat(p.price).toFixed(2)}€</span>
+        </div>`).join('')}
+      </div>
+      <div class="stats-card">
+        <div class="stats-card-title">📂 Répartition par section</div>
+        ${bySec.map(s=>`<div class="stats-sec-row">
+          <span class="stats-sec-icon">${s.icon}</span>
+          <span class="stats-sec-name">${s.label}</span>
+          <div class="stats-bar-wrap"><div class="stats-bar" style="width:${Math.round((s.count/total)*100)}%"></div></div>
+          <span class="stats-sec-cnt">${s.count}</span>
+          <span class="stats-sec-val">${s.val.toFixed(0)}€</span>
+        </div>`).join('')}
       </div>
     </div>
   </div>`;
 }
 
-// ── RENDER FEATURED ───────────────────────────────────────────────────────────
-function renderFeatured() {
-  const watches = allProducts.filter(p=>p.sid==='complete'&&p.stock!=='vendu').sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,4);
-  const el=document.getElementById('featured-grid'); if(!el) return;
-  el.innerHTML = watches.length ? watches.map(productCard).join('') : '<div class="no-products">Catalogue en cours de préparation — revenez bientôt !</div>';
-}
-
-// ── RENDER MODEL TAGS ─────────────────────────────────────────────────────────
-function renderModelTags() {
-  const el = document.getElementById('model-tags'); if(!el) return;
-  // Extrait les mots-clés uniques des noms de produits (montres seulement)
-  const watches = allProducts.filter(p=>p.sid==='complete');
-  const keywords = new Set();
-  watches.forEach(p=>{
-    // Extrait mots significatifs (plus de 3 lettres, pas "Seiko" ni "Mod")
-    const words = p.name.replace(/ - Seiko Mod/gi,'').split(/\s+/);
-    words.forEach(w=>{
-      const clean = w.replace(/[^a-zA-ZÀ-ÿ]/g,'');
-      if(clean.length > 3 && !['Seiko','Mod','Silver','Cadran','Bracelet','Black'].includes(clean)) keywords.add(clean);
-    });
-  });
-  if(!keywords.size){el.innerHTML='';return;}
-  el.innerHTML = [...keywords].sort().map(k=>
-    `<button class="model-tag${activeModelTag===k?' active':''}" onclick="setModelTag('${k}')">${k}</button>`
-  ).join('');
-}
-
-window.setModelTag = function(tag) {
-  activeModelTag = activeModelTag===tag ? '' : tag; // toggle
-  renderModelTags();
-  renderShop();
-};
-function renderShop() {
-  let prods = [...allProducts];
-  // Category filter
-  if(activeCategory==='watches')     prods=prods.filter(p=>p.sid==='complete');
-  else if(activeCategory==='accessories') prods=prods.filter(p=>p.sid==='accessoire');
-  // Model tag filter
-  if(activeModelTag) prods=prods.filter(p=>p.name.toLowerCase().includes(activeModelTag.toLowerCase()));
-  // Price filter
-  prods=prods.filter(p=>{ const v=parseFloat(p.price)||0; return v>=priceMin && v<=priceMax; });
-  // Search
-  if(searchQ){ const q=searchQ.toLowerCase(); prods=prods.filter(p=>p.name.toLowerCase().includes(q)||(p.notes||'').toLowerCase().includes(q)); }
-  // Sort
-  if(sortBy==='price-asc')   prods.sort((a,b)=>(parseFloat(a.price)||0)-(parseFloat(b.price)||0));
-  if(sortBy==='price-desc')  prods.sort((a,b)=>(parseFloat(b.price)||0)-(parseFloat(a.price)||0));
-  if(sortBy==='name-az')     prods.sort((a,b)=>a.name.localeCompare(b.name));
-  if(sortBy==='name-za')     prods.sort((a,b)=>b.name.localeCompare(a.name));
-  if(sortBy==='newest')      prods.sort((a,b)=>(b.ts||0)-(a.ts||0));
-  if(sortBy==='date-asc')    prods.sort((a,b)=>(a.ts||0)-(b.ts||0));
-  if(sortBy==='date-desc')   prods.sort((a,b)=>(b.ts||0)-(a.ts||0));
-  if(sortBy==='featured')    prods.sort((a,b)=>(b.ts||0)-(a.ts||0)); // newest first as featured
-  if(sortBy==='available')   prods.sort((a,b)=>{ if(a.stock==='stock'&&b.stock!=='stock') return -1; if(b.stock==='stock'&&a.stock!=='stock') return 1; return 0; });
-
-  const el=document.getElementById('shop-grid'); if(!el) return;
-  const cnt=document.getElementById('shop-count'); if(cnt) cnt.textContent=prods.length+' produit'+(prods.length!==1?'s':'');
-  document.querySelectorAll('.cat-btn').forEach(b=>b.classList.toggle('active',b.dataset.cat===activeCategory));
-  el.innerHTML = prods.length ? prods.map(productCard).join('') : '<div class="no-products">Aucun résultat.</div>';
-}
-
-// ── SEARCH DROPDOWN ───────────────────────────────────────────────────────────
-function renderSearchDropdown(q) {
-  const dropdown = document.getElementById('search-dropdown');
-  if(!dropdown) return;
-  if(!q || q.length < 2) { dropdown.classList.add('hidden'); return; }
-  const results = allProducts.filter(p=>p.name.toLowerCase().includes(q.toLowerCase())||(p.notes||'').toLowerCase().includes(q.toLowerCase())).slice(0,8);
-  if(!results.length) {
-    dropdown.innerHTML='<div style="padding:20px 16px;text-align:center;color:#9a9690;font-size:13px">Aucun résultat pour "'+q+'"</div>';
-    dropdown.classList.remove('hidden'); return;
-  }
-  dropdown.innerHTML = `<div class="sd-header">Produits — ${results.length} résultat${results.length>1?'s':''}</div>`
-    + results.map(p=>`
-    <div class="sd-item" onclick="openProduct('${p.id}');closeSearchDropdown()">
-      <img src="${p.img}" alt="${p.name}" class="sd-img">
-      <div class="sd-info">
-        <div class="sd-name">${p.name}</div>
-        <div class="sd-price">${parseFloat(p.price).toFixed(2)} €</div>
-      </div>
-    </div>`).join('');
-  dropdown.classList.remove('hidden');
-}
-
-window.onSearchInput = function(v) {
-  searchQ = v;
-  renderSearchDropdown(v);
-  // Do NOT navigate or re-render shop — results only in dropdown
-};
-window.closeSearchDropdown = function() {
-  const d=document.getElementById('search-dropdown'); if(d) d.classList.add('hidden');
-};
-document.addEventListener('click', e => {
-  if(!e.target.closest('.nav-search-wrap')) closeSearchDropdown();
-});
-
-// ── FILTERS ───────────────────────────────────────────────────────────────────
-window.setCategory = function(c) { activeCategory=c; renderShop(); };
-window.setSort = function(v) { sortBy=v; renderShop(); };
-window.onPriceMinChange = function(v) { priceMin=parseInt(v); document.getElementById('price-min-slider').value=v; updatePriceDisplay(); renderShop(); };
-window.onPriceMaxChange = function(v) { priceMax=parseInt(v); document.getElementById('price-max-slider').value=v; updatePriceDisplay(); renderShop(); };
-
-// ── PRODUCT MODAL ─────────────────────────────────────────────────────────────
-window.openProduct = function(id) {
-  const p=allProducts.find(x=>x.id===id); if(!p) return;
-  const sold=p.stock==='vendu';
-  const sizes=p.sizes?p.sizes.split(',').map(s=>s.trim()).filter(Boolean):[];
-  
-  document.getElementById('product-modal-body').innerHTML=`
-    <div class="pm-img">
-      <img src="${p.img}" alt="${p.name}">
-      ${sold?'<div class="pm-sold">Vendu</div>':''}
-    </div>
-    <div class="pm-info">
-      <h2 class="pm-name">${p.name}</h2>
-      ${!sold?`<div class="pm-price">${parseFloat(p.price).toFixed(2)} €</div>`:'<div class="pm-price sold-text">Vendu</div>'}
-      ${sizes.length?`<div class="pm-sizes-block">
-        <div class="pm-lbl-title">Taille</div>
-        <div class="pm-sizes">${sizes.map((s,i)=>`<button class="size-btn${i===0?' selected':''}" onclick="selectSize(this)">${s}</button>`).join('')}</div>
-      </div>`:''}
-      ${p.notes?`<div class="pm-notes">${p.notes.replace(/\n/g,'<br>')}</div>`:''}
-      <div class="pm-actions">
-        ${!sold?`
-          <button class="btn-add-cart-big" onclick="addToCartFromModal('${p.id}')">
-            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-            Ajouter au panier
-          </button>
-          <a class="btn-instagram" href="${INSTAGRAM}" target="_blank">
-            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="currentColor" stroke="none"/></svg>
-            Contacter sur Instagram
-          </a>`:'<p style="color:#888;font-size:14px;text-align:center">Cette pièce n\'est plus disponible.</p>'}
-      </div>
-      <div class="pm-guarantee">
-        <div class="pm-g-item">🔧 Assemblé à la main avec soin</div>
-        <div class="pm-g-item">📦 Livraison soignée partout en Europe</div>
-        <div class="pm-g-item">📸 Suivez-nous sur Instagram</div>
-      </div>
-    </div>`;
-  document.getElementById('product-modal').classList.remove('hidden');
-  document.body.style.overflow='hidden';
-};
-window.selectSize = function(btn) {
-  btn.closest('.pm-sizes').querySelectorAll('.size-btn').forEach(b=>b.classList.remove('selected'));
-  btn.classList.add('selected');
-};
-window.closeProductModal = function() {
-  document.getElementById('product-modal').classList.add('hidden');
-  document.body.style.overflow='';
-};
-
-// ── CART ──────────────────────────────────────────────────────────────────────
-window.addToCart = function(id) {
-  const p=allProducts.find(x=>x.id===id); if(!p) return;
-  cart.push({id,name:p.name,price:p.price,img:p.img,size:''});
-  saveCart(); updateCartBadge(); showToast('Ajouté au panier ✓');
-};
-window.addToCartFromModal = function(id) {
-  const p=allProducts.find(x=>x.id===id); if(!p) return;
-  const sel=document.querySelector('.pm-sizes .size-btn.selected');
-  cart.push({id,name:p.name,price:p.price,img:p.img,size:sel?sel.textContent:''});
-  saveCart(); updateCartBadge(); closeProductModal(); showToast('Ajouté au panier ✓');
-};
-window.removeFromCart = function(i) { cart.splice(i,1); saveCart(); renderCart(); };
-function saveCart() { localStorage.setItem('adrimods-cart',JSON.stringify(cart)); }
-function updateCartBadge() {
-  const b=document.getElementById('cart-badge');
-  if(b){ b.textContent=cart.length; b.style.display=cart.length?'flex':'none'; }
-}
-function renderCart() {
-  updateCartBadge();
-  const el=document.getElementById('cart-items'); if(!el) return;
-  const total=cart.reduce((a,c)=>a+(parseFloat(c.price)||0),0);
-  if(!cart.length){
-    el.innerHTML='<div class="cart-empty"><div style="font-size:40px;margin-bottom:12px">🛒</div><div>Votre panier est vide</div></div>';
-    document.getElementById('cart-total').textContent='0.00 €';
-    document.getElementById('cart-checkout-btn').style.display='none';
-    return;
-  }
-  el.innerHTML=cart.map((item,i)=>`<div class="cart-item">
-    <img src="${item.img}" class="cart-item-img">
-    <div class="cart-item-info">
-      <div class="cart-item-name">${item.name}</div>
-      ${item.size?`<div class="cart-item-size">${item.size}</div>`:''}
-      <div class="cart-item-price">${parseFloat(item.price).toFixed(2)} €</div>
-    </div>
-    <button class="cart-item-remove" onclick="removeFromCart(${i})">✕</button>
-  </div>`).join('');
-  document.getElementById('cart-total').textContent=total.toFixed(2)+' €';
-  document.getElementById('cart-checkout-btn').style.display='flex';
-}
-window.openCart = function() { renderCart(); document.getElementById('cart-modal').classList.remove('hidden'); document.body.style.overflow='hidden'; };
-window.closeCart = function() { document.getElementById('cart-modal').classList.add('hidden'); document.body.style.overflow=''; };
-window.checkoutCart = function() {
-  if(!cart.length) return;
-  window.open(INSTAGRAM,'_blank');
-};
-
-// ── NAV ───────────────────────────────────────────────────────────────────────
-// ── GALLERY ───────────────────────────────────────────────────────────────────
-function renderGallery() {
-  const el=document.getElementById('gallery-grid'); if(!el) return;
-  // Show all completed watches (published or not, just use published ones)
-  const items=allProducts.filter(p=>p.sid==='complete'&&p.img).sort((a,b)=>(b.ts||0)-(a.ts||0));
-  if(!items.length){el.innerHTML='<div class="no-products">Les réalisations arrivent bientôt !</div>';return;}
-  el.innerHTML=`<div class="gallery-masonry">${items.map(p=>`
-    <div class="gallery-card" onclick="openProduct('${p.id}')">
-      <div class="gallery-img-wrap"><img src="${p.img}" alt="${p.name}" loading="lazy"></div>
-      <div class="gallery-card-body">
-        <div class="gallery-card-name">${p.name}</div>
-        <div class="gallery-card-price">${p.stock==='vendu'?'<span class="sold-price">Vendu</span>':parseFloat(p.price).toFixed(2)+' €'}</div>
-      </div>
-    </div>`).join('')}</div>`;
-}
-
-window.showPage = function(page) {
-  document.body.style.overflow = '';
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('page-'+page).classList.add('active');
-  document.querySelectorAll('.nav-link').forEach(l=>l.classList.toggle('active',l.dataset.page===page));
-  window.scrollTo({top:0,behavior:'smooth'});
-  if(page==='shop') renderShop();
-};
-window.openSocial = function(url) { window.open(url,'_blank'); };
-
-window.toggleMobileMenu = function() {
-  const menu = document.getElementById('mobile-menu');
-  const btn = document.getElementById('hamburger-btn');
-  menu.classList.toggle('hidden');
-  btn.classList.toggle('open');
-};
-window.closeMobileMenu = function() {
-  document.getElementById('mobile-menu').classList.add('hidden');
-  document.getElementById('hamburger-btn').classList.remove('open');
-};
-
-// ── TOAST ─────────────────────────────────────────────────────────────────────
-function showToast(msg) {
-  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2400);
-}
-
-// ── CLICK OUTSIDE ─────────────────────────────────────────────────────────────
-document.addEventListener('click',e=>{
-  if(e.target.id==='product-modal') closeProductModal();
-  if(e.target.id==='cart-modal') closeCart();
-});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeProductModal();closeCart();}});
-
-document.addEventListener('DOMContentLoaded', function() {
-  const img=document.getElementById('about-img-el');
-  if(img&&ABOUT_PHOTO){img.src=ABOUT_PHOTO;img.style.display='block';document.getElementById('about-icon-fallback').style.display='none';}
-});
+loadSectionLabels().then(startListeners);
 </script>
 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#fafaf8;--surface:#fff;--border:#e8e4de;--border2:#d0ccc4;
-  --ink:#1a1714;--ink2:#5a5650;--ink3:#9a9690;
-  --gold:#b8941e;--gold-bg:#fdf6e3;--green:#2a7a4a;
+  --bg:#0d0d0f;--bg2:#141417;--bg3:#1a1a1f;--bg4:#202026;
+  --line:#252530;--line2:#303040;
+  --text:#ffffff;--text2:#c8c6d4;--text3:#8a88a0;
+  --gold:#b0b8c8;--gold2:#d0d8e8;
+  --gd:rgba(176,184,200,.1);--gg:rgba(176,184,200,.05);--gb:rgba(176,184,200,.22);
+  --green:#4aaf78;--red-c:#c05a5a;--blue-c:#6a96cc;--amber-c:#b0b8c8;
   --r:10px;--r-sm:6px;
 }
-html,body{height:100%}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;min-height:100vh}
-img{display:block;max-width:100%}
-a{text-decoration:none;color:inherit}
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+body.light{
+  --bg:#f4f3f0;--bg2:#ffffff;--bg3:#f0eeed;--bg4:#e8e6e2;
+  --line:#e0ddd8;--line2:#ccc9c3;
+  --text:#1a1714;--text2:#4a4642;--text3:#8a8480;
+  --gold:#6a6e78;--gold2:#3a3e48;
+  --gd:rgba(26,23,20,.07);--gg:rgba(26,23,20,.04);--gb:rgba(26,23,20,.18);
+  --green:#2a7a4a;--red-c:#b04040;--blue-c:#3a66aa;--amber-c:#6a6e78;
+}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px}
 
-/* ── NAV ── */
-.nav{position:sticky;top:0;z-index:100;background:rgba(250,250,248,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
-.nav-inner{width:100%;padding:0;height:64px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
-.nav-logo{font-family:'Playfair Display',serif;font-size:20px;font-weight:600;letter-spacing:.04em;cursor:pointer;flex-shrink:0;padding-left:0;white-space:nowrap;justify-self:start;padding:0 0 0 24px}
-.nav-logo em{font-style:italic;color:var(--gold)}
-.nav-links{display:flex;gap:2px;justify-content:center}
-.nav-link{padding:7px 13px;border-radius:var(--r-sm);font-size:13px;font-weight:500;color:var(--ink2);cursor:pointer;transition:all .14s;border:none;background:none;font-family:'Inter',sans-serif;white-space:nowrap}
-.nav-link:hover{color:var(--ink);background:rgba(0,0,0,.05)}
-.nav-link.active{color:var(--ink);background:rgba(0,0,0,.07);font-weight:600}
-.nav-right{display:flex;align-items:center;gap:8px;flex-shrink:0;justify-self:end;padding:0 24px 0 0}
+/* ── HEADER ── */
+.hdr{flex-shrink:0;background:var(--bg2);border-bottom:1px solid var(--line)}
+.hdr-top{height:54px;padding:0 24px;display:flex;align-items:center;gap:16px}
+.logo{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo-mark{width:28px;height:28px;border:1px solid var(--gb);border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--gd)}
+.logo-mark svg{width:12px;height:12px;stroke:var(--gold2);fill:none;stroke-width:1.5}
+.logo-main{font-family:'Playfair Display',serif;font-size:15px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}
+.logo-sub{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--gold2);letter-spacing:.2em;text-transform:uppercase;margin-top:1px}
+.hdr-div{width:1px;height:18px;background:var(--line2)}
+.hdr-stats{display:flex;gap:20px}
+.hdr-stat{display:flex;flex-direction:column}
+.hdr-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase}
+.hdr-stat-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500}
+.hdr-stat-val.g{color:var(--gold2)}
+.hdr-sp{flex:1}
+.hdr-btns{display:flex;gap:6px;align-items:center}
+.view-btn{padding:6px 14px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);cursor:pointer;text-align:center;letter-spacing:.08em;text-transform:uppercase;transition:all .14s}
+.view-btn:hover,.view-btn.active{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 
-/* Search */
-.nav-search-wrap{position:relative;display:flex;align-items:center}
-.nav-search-wrap>svg{position:absolute;left:12px;color:var(--ink3);pointer-events:none;z-index:1}
-.nav-search{padding:10px 16px 10px 40px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:var(--bg);font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);width:260px;outline:none;transition:all .18s}
-.nav-search:focus{border-color:var(--ink);background:#fff;width:340px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
-.nav-search::placeholder{color:var(--ink3)}
-/* Search dropdown */
-.search-dropdown{position:absolute;top:calc(100% + 8px);right:0;width:420px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 12px 40px rgba(0,0,0,.14);z-index:999;max-height:500px;overflow-y:auto}
-.search-dropdown.hidden{display:none}
-.sd-header{padding:10px 16px 8px;font-family:'DM Mono',monospace;font-size:9px;color:var(--ink3);letter-spacing:.12em;text-transform:uppercase;border-bottom:1px solid var(--border)}
-.sd-item{display:flex;align-items:center;gap:14px;padding:12px 16px;cursor:pointer;transition:background .12s;border-bottom:1px solid var(--border)}
-.sd-item:last-child{border-bottom:none}
-.sd-item:hover{background:var(--bg)}
-.sd-img{width:56px;height:56px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;background:#f0ede8}
-.sd-info{flex:1;min-width:0}
-.sd-name{font-size:14px;font-weight:500;color:var(--ink)}
-.sd-price{font-size:13px;color:var(--gold);font-family:'Playfair Display',serif;margin-top:3px}
-.nav-cart{position:relative;width:38px;height:38px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s}
-.nav-cart:hover{border-color:var(--border2);background:var(--bg)}
-.cart-badge{position:absolute;top:-6px;right:-6px;width:17px;height:17px;background:var(--ink);color:#fff;border-radius:50%;font-size:9px;font-weight:700;display:none;align-items:center;justify-content:center}
-.nav-cta{padding:9px 16px;background:var(--ink);color:#fff;border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;transition:all .14s;border:none;font-family:'Inter',sans-serif;white-space:nowrap;display:flex;align-items:center;gap:6px}
-.nav-cta:hover{background:#333}
+.nav-bar{height:42px;padding:0 24px;display:flex;align-items:flex-end;gap:0;overflow-x:auto;border-top:1px solid var(--line)}
+.nav-bar::-webkit-scrollbar{height:0}
+.nav-tab{display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:38px;background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;font-weight:500;color:var(--text2);transition:all .14s;white-space:nowrap}
+.nav-tab:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.nav-tab.active{color:var(--gold2);border-bottom-color:var(--gold2);background:var(--gg)}
+.tab-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);background:var(--gd);border:1px solid var(--gb);padding:1px 5px;border-radius:8px}
 
-/* ── PAGES ── */
-.page{display:none;flex-direction:column;flex:1}
-.page.active{display:flex}
-.page-content{flex:1}
+.sub-bar{flex-shrink:0;height:40px;padding:0 24px;display:flex;align-items:center;gap:12px;background:var(--bg3);border-bottom:1px solid var(--line)}
+.back-btn{display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-size:11px;font-family:'Inter',sans-serif;cursor:pointer;transition:all .14s}
+.back-btn:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px}
+.bc-item{color:var(--text2);font-weight:500}
+.bc-sep{color:var(--text3);font-size:10px}
 
-/* ── FOOTER ALWAYS AT BOTTOM ── */
-.site-footer{background:var(--ink);color:rgba(255,255,255,.5);padding:40px 24px;text-align:center;margin-top:auto}
-.footer-inner{max-width:1200px;margin:0 auto}
-.footer-logo{font-family:'Playfair Display',serif;font-size:22px;color:#fff;margin-bottom:8px}
-.footer-logo em{font-style:italic;color:#c9a84c}
-.footer-sub{font-size:13px;margin-bottom:20px}
-.footer-links{display:flex;gap:24px;justify-content:center;flex-wrap:wrap;margin-bottom:24px}
-.footer-link{font-size:13px;color:rgba(255,255,255,.5);cursor:pointer;transition:color .14s}
-.footer-link:hover{color:#fff}
-.footer-copy{font-size:11px;font-family:'DM Mono',monospace;letter-spacing:.06em}
+.layout{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.main{flex:1;overflow-y:auto;padding:24px}
 
-/* ── HERO ── */
-.hero{background:var(--ink);color:#fff;padding:80px 24px;text-align:center;position:relative;overflow:hidden}
-.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 60% 40%,rgba(184,148,30,.15) 0%,transparent 60%);pointer-events:none}
-.hero-eyebrow{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:16px}
-.hero-title{font-family:'Playfair Display',serif;font-size:clamp(36px,6vw,64px);font-weight:500;line-height:1.1;letter-spacing:.01em;margin-bottom:20px;position:relative}
-.hero-title em{font-style:italic;color:#c9a84c}
-.hero-sub{font-size:16px;color:rgba(255,255,255,.6);max-width:480px;margin:0 auto 36px;line-height:1.7;position:relative}
-.hero-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;position:relative}
-.btn-primary{padding:13px 28px;background:#fff;color:var(--ink);border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all .14s;border:none;font-family:'Inter',sans-serif}
-.btn-primary:hover{background:#f0ede8;transform:translateY(-1px)}
-.btn-secondary{padding:13px 28px;background:rgba(255,255,255,.12);color:#fff;border-radius:var(--r-sm);font-size:14px;font-weight:500;cursor:pointer;transition:all .14s;border:1px solid rgba(255,255,255,.3);font-family:'Inter',sans-serif}
-.btn-secondary:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}
+/* ── TILES ── */
+.level-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.level-title{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;letter-spacing:.04em}
+.level-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-top:5px}
+.tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.brand-tile{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .16s;position:relative}
+.brand-tile:hover{border-color:var(--gb);box-shadow:0 4px 20px rgba(176,184,200,.06);transform:translateY(-2px)}
+.tile-cover{width:100%;height:140px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.tile-cover img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.brand-tile:hover .tile-cover img{transform:scale(1.04)}
+.tile-icon{font-size:36px;opacity:.12}
+.tile-body{padding:12px 14px}
+.tile-name{font-family:'Playfair Display',serif;font-size:16px;font-weight:500;letter-spacing:.04em}
+.tile-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:.06em}
+.tile-actions{position:absolute;top:8px;right:8px;display:none;gap:4px}
+.brand-tile:hover .tile-actions{display:flex}
+.tile-act-btn{width:24px;height:24px;border-radius:var(--r-sm);border:1px solid var(--line2);background:var(--bg2);color:var(--text2);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .14s;font-family:'Inter',sans-serif}
+.tile-act-btn:hover{border-color:var(--gb);color:var(--gold2);background:var(--gd)}
+.tile-act-btn.del:hover{border-color:rgba(192,90,90,.4);color:var(--red-c);background:rgba(192,90,90,.12)}
 
-/* ── TRUST BAR ── */
-.trust-bar{background:var(--gold-bg);border-top:1px solid #e8d89a;border-bottom:1px solid #e8d89a;padding:12px 24px}
-.trust-inner{max-width:1200px;margin:0 auto;display:flex;gap:32px;justify-content:center;flex-wrap:wrap}
-.trust-item{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;color:var(--ink2)}
-.trust-item span{font-size:15px}
-
-/* ── SECTION ── */
-.section{max-width:1200px;margin:0 auto;padding:64px 24px}
-.section-hdr{text-align:center;margin-bottom:40px}
-.section-eyebrow{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
-.section-title{font-family:'Playfair Display',serif;font-size:clamp(24px,4vw,36px);font-weight:500;color:var(--ink);letter-spacing:.01em;line-height:1.2}
-.section-sub{font-size:15px;color:var(--ink2);margin-top:10px;line-height:1.6;max-width:560px;margin-left:auto;margin-right:auto}
-
-/* ── SHOP TOPBAR ── */
-.shop-topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 24px;position:sticky;top:64px;z-index:50}
-.shop-topbar-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.shop-tags-bar{background:var(--bg);border-bottom:1px solid var(--border);padding:10px 24px}
-.shop-tags-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.tags-sep{width:1px;height:20px;background:var(--border2);flex-shrink:0}
-.model-tags{display:flex;gap:6px;flex-wrap:wrap}
-.model-tag{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--ink2);transition:all .14s;font-family:'Inter',sans-serif}
-.model-tag:hover{border-color:var(--ink2);color:var(--ink)}
-.model-tag.active{background:var(--gold);color:#fff;border-color:var(--gold)}
-.shop-cats{display:flex;gap:6px}
-.cat-btn{padding:7px 16px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--ink2);transition:all .14s;font-family:'Inter',sans-serif}
-.cat-btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
-.shop-right{display:flex;align-items:center;gap:8px}
-.shop-count{font-family:'DM Mono',monospace;font-size:11px;color:var(--ink3)}
-
-/* ── FILTER BAR ── */
-.filter-bar{background:var(--bg);border-bottom:1px solid var(--border);padding:10px 24px}
-.filter-bar-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.filter-label{font-size:11px;font-weight:600;color:var(--ink2);white-space:nowrap}
-.filter-sep{width:1px;height:16px;background:var(--border)}
-.filter-select{padding:5px 10px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);font-size:11px;font-family:'Inter',sans-serif;color:var(--ink2);cursor:pointer;outline:none;transition:border-color .14s}
-.filter-select:focus{border-color:var(--ink)}
-.price-range-wrap{display:flex;align-items:center;gap:8px}
-.price-range-display{font-family:'DM Mono',monospace;font-size:11px;color:var(--ink2);min-width:100px}
-.price-slider{width:80px;accent-color:var(--ink);cursor:pointer}
+/* ── GRID TOOLBAR ── */
+.grid-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.grid-toolbar-left{display:flex;align-items:center;gap:10px}
+.grid-toolbar-right{display:flex;align-items:center;gap:8px}
+.search-wrap{position:relative;display:flex;align-items:center}
+.search-wrap svg{position:absolute;left:10px;color:var(--text3);pointer-events:none}
+.search-inp{padding:7px 32px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-family:'Inter',sans-serif;font-size:12px;width:220px;outline:none;transition:all .14s}
+.search-inp:focus{border-color:var(--gb);background:var(--bg4)}
+.search-inp::placeholder{color:var(--text3)}
+.search-clear{position:absolute;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px}
+.grid-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3)}
+.filter-sel{padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;cursor:pointer;outline:none}
+.filter-sel option{background:var(--bg3)}
 
 /* ── PRODUCT GRID ── */
-.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:24px}
-.shop-grid-wrap{max-width:1200px;margin:0 auto;padding:28px 24px;flex:1}
-.product-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .18s}
-.product-card:hover{border-color:var(--border2);box-shadow:0 8px 32px rgba(0,0,0,.1);transform:translateY(-3px)}
-.product-card.sold{opacity:.7}
-.card-img-wrap{position:relative;aspect-ratio:1;overflow:hidden;background:#f0ede8}
-.card-img-wrap img{width:100%;height:100%;object-fit:cover;transition:transform .4s}
-.product-card:hover .card-img-wrap img{transform:scale(1.04)}
-.sold-badge,.new-badge{position:absolute;top:12px;left:12px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace;letter-spacing:.06em}
-.sold-badge{background:rgba(0,0,0,.7);color:#fff}
-.new-badge{background:var(--ink);color:#fff}
-.card-body{padding:14px 16px}
-.card-name{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px;line-height:1.3}
-.card-sizes{font-family:'DM Mono',monospace;font-size:9px;color:var(--ink3);margin-bottom:10px}
-.card-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.card-price{font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:var(--ink)}
-.sold-price{font-size:13px;color:var(--ink3);font-family:'Inter',sans-serif}
-.card-btn{padding:7px 13px;background:var(--ink);color:#fff;border-radius:var(--r-sm);font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:all .14s}
-.card-btn:hover{background:#333}
-.no-products{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--ink3);font-size:15px;line-height:1.7}
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px}
+.product-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .16s}
+.product-card:hover{border-color:var(--gb);box-shadow:0 4px 20px rgba(176,184,200,.06);transform:translateY(-2px)}
+.product-card.sold{opacity:.6}
+.product-img{width:100%;height:180px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.product-img img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.product-card:hover .product-img img{transform:scale(1.04)}
+.product-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:8px}
+.placeholder-name{font-size:10px;font-weight:500;color:var(--text2);text-align:center;line-height:1.3;max-width:90%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.sold-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;letter-spacing:.14em}
+.product-body{padding:12px 14px}
+.product-name{font-size:13px;font-weight:500;line-height:1.3;margin-bottom:3px}
+.product-sku{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:6px}
+.product-footer{display:flex;align-items:center;justify-content:space-between}
+.product-price{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--gold2)}
+.stock-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.stock-dot.green{background:var(--green);box-shadow:0 0 5px rgba(74,175,120,.4)}
+.stock-dot.amber{background:var(--amber-c)}
+.stock-dot.red{background:var(--red-c)}
+.stock-dot.purple{background:#9b6dd6}
 
-/* ── STEPS ── */
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:32px}
-.step{text-align:center;padding:0 8px}
-.step-num{width:46px;height:46px;border-radius:50%;background:var(--ink);color:#fff;font-family:'Playfair Display',serif;font-size:20px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
-.step-title{font-weight:600;font-size:14px;color:var(--ink);margin-bottom:6px}
-.step-text{font-size:13px;color:var(--ink2);line-height:1.6}
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:60px 20px}
+.empty-icon{font-size:48px;margin-bottom:14px;opacity:.2}
+.empty-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--text);margin-bottom:8px}
+.empty-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
 
-/* ── ABOUT ── */
-.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
-.about-img-box{aspect-ratio:4/5;background:var(--ink);border-radius:var(--r);overflow:hidden;display:flex;align-items:center;justify-content:center}
-.about-img-box img{width:100%;height:100%;object-fit:cover}
-.about-icon-fb{font-size:80px;opacity:.15}
-.about-text h2{font-family:'Playfair Display',serif;font-size:32px;font-weight:500;margin-bottom:16px;line-height:1.2}
-.about-text p{font-size:15px;color:var(--ink2);line-height:1.8;margin-bottom:14px}
-.about-hint{font-size:11px;color:var(--ink3);background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;margin-top:4px;font-family:'DM Mono',monospace}
-.about-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
-.about-tag{padding:5px 12px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:500;color:var(--ink2)}
+/* ── SETTINGS ── */
+.settings-page{width:100%}
+.settings-title{font-family:'Playfair Display',serif;font-size:24px;margin-bottom:8px}
+.settings-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
+.settings-sections-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.settings-section{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.settings-sec-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bg3)}
+.settings-sec-icon{font-size:16px}
+.settings-sec-name{font-weight:600;font-size:12px;flex:1}
+.settings-brands-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 14px}
+.settings-brand-card{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.settings-brand-hdr{display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--line);background:var(--bg4)}
+.settings-brand-lbl{flex:1;font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.settings-models-list{padding:5px 7px;display:flex;flex-wrap:wrap;gap:4px}
+.settings-model-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;background:var(--bg2);border:1px solid var(--line);border-radius:20px;font-size:9px;color:var(--text2)}
+.chip-cnt{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--gold2);background:var(--gd);padding:1px 4px;border-radius:8px}
+.settings-model-chip button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:9px;padding:0 1px;transition:color .12s;line-height:1}
+.settings-model-chip button:hover{color:var(--gold2)}
+.btn-rename{padding:4px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-family:'Inter',sans-serif;font-size:10px;cursor:pointer;transition:all .14s;white-space:nowrap}
+.btn-rename:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
+.btn-rename.sm{padding:3px 8px;font-size:9px}
+.btn-rename.xs{padding:2px 7px;font-size:9px}
+.btn-rename.xs.del{border-color:rgba(192,90,90,.3);color:var(--red-c);background:rgba(192,90,90,.08)}
+.btn-rename.xs.del:hover{background:rgba(192,90,90,.2)}
+.del-model-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:9px;padding:0 2px;flex-shrink:0;transition:color .12s;margin-left:1px}
+.del-model-btn:hover{color:var(--red-c)}
 
-/* ── CUSTOM ORDER ── */
-.custom-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
-.custom-info h3{font-family:'Playfair Display',serif;font-size:24px;margin-bottom:12px}
-.custom-info p{font-size:14px;color:var(--ink2);line-height:1.7;margin-bottom:16px}
-.custom-examples{display:flex;flex-direction:column;gap:10px}
-.custom-example{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm)}
-.custom-example-icon{font-size:20px}
-.custom-example-text{font-size:13px;color:var(--ink2)}
+/* ── BUTTONS ── */
+.btn-gold{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .14s;white-space:nowrap}
+.btn-gold:hover{background:rgba(176,184,200,.18);border-color:var(--gold2)}
+.btn-gold.sm{padding:6px 12px;font-size:10px}
+.btn-outline{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border:1px solid var(--line2);border-radius:var(--r-sm);background:transparent;color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;font-weight:500;cursor:pointer;transition:all .14s;white-space:nowrap}
+.btn-outline:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
+.btn-outline.sm{padding:5px 10px;font-size:10px}
+.btn-outline.blue{border-color:rgba(106,150,204,.3);color:var(--blue-c);background:rgba(106,150,204,.08)}
+.btn-outline.blue:hover{background:rgba(106,150,204,.16)}
+.btn-outline.red{border-color:rgba(192,90,90,.3);color:var(--red-c);background:rgba(192,90,90,.08)}
+.btn-outline.red:hover{background:rgba(192,90,90,.16)}
+.btn-sb{padding:6px 12px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);cursor:pointer;letter-spacing:.08em;text-transform:uppercase;transition:all .14s}
+.btn-sb:hover{border-color:var(--gb);color:var(--gold2);background:var(--gg)}
 
-/* ── CONTACT ── */
-.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start}
-.contact-info h3{font-family:'Playfair Display',serif;font-size:24px;margin-bottom:12px}
-.contact-info p{font-size:14px;color:var(--ink2);line-height:1.7;margin-bottom:20px}
-.contact-option{display:flex;align-items:center;gap:14px;padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:all .14s}
-.contact-option:hover{border-color:var(--border2);box-shadow:0 2px 12px rgba(0,0,0,.06)}
-.co-icon{width:40px;height:40px;border-radius:var(--r-sm);background:#25D366;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.contact-option-title{font-weight:600;font-size:14px;color:var(--ink)}
-.contact-option-sub{font-size:12px;color:var(--ink3);margin-top:2px}
-.contact-form-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:28px}
-.contact-form-box h3{font-family:'Playfair Display',serif;font-size:20px;margin-bottom:20px}
-.cf-group{margin-bottom:14px}
-.cf-group label{display:block;font-size:11px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
-.cf-group input,.cf-group textarea,.cf-group select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--bg);outline:none;transition:border-color .14s}
-.cf-group input:focus,.cf-group textarea:focus,.cf-group select:focus{border-color:var(--ink);background:#fff}
-.cf-group textarea{min-height:100px;resize:vertical;line-height:1.6}
-.cf-submit{width:100%;padding:12px;background:var(--ink);color:#fff;border:none;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:all .14s}
-.cf-submit:hover:not(:disabled){background:#333}
-.cf-submit:disabled{opacity:.7;cursor:not-allowed}
+/* ── MODALS ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)}
+.overlay.hidden{display:none}
+.modal{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r);width:100%;max-width:500px;max-height:92vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.9)}
+.modal-hdr{padding:18px 22px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--bg2);z-index:2}
+.modal-title{font-family:'Playfair Display',serif;font-size:19px;font-weight:500;letter-spacing:.04em}
+.modal-x{width:26px;height:26px;border:1px solid var(--line2);background:var(--bg3);border-radius:var(--r-sm);cursor:pointer;color:var(--text3);font-size:12px;display:flex;align-items:center;justify-content:center;transition:all .14s;flex-shrink:0}
+.modal-x:hover{background:rgba(192,90,90,.12);color:var(--red-c);border-color:rgba(192,90,90,.3)}
+.modal-body{padding:18px 22px}
+.modal-footer{padding:12px 22px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg2)}
 
-/* ── PRODUCT MODAL ── */
-.pm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)}
-.pm-overlay.hidden{display:none}
-.pm-modal{background:var(--surface);border-radius:var(--r);width:100%;max-width:780px;max-height:88vh;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;box-shadow:0 24px 80px rgba(0,0,0,.3);position:relative}
-.pm-img{aspect-ratio:1;background:#f0ede8;overflow:hidden;position:relative}
-.pm-img img{width:100%;height:100%;object-fit:cover;image-rendering:auto}
-.pm-sold{position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:28px;color:#fff;letter-spacing:.1em}
-.pm-close{position:absolute;top:14px;right:14px;width:30px;height:30px;background:rgba(0,0,0,.45);color:#fff;border:none;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;z-index:10}
-.pm-info{padding:24px;display:flex;flex-direction:column;overflow-y:auto;max-height:88vh}
-.pm-brand{font-family:'DM Mono',monospace;font-size:9px;color:var(--ink3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:6px}
-.pm-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1.2;margin-bottom:10px}
-.pm-price{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;color:var(--ink);margin-bottom:16px}
-.pm-price.sold-text{font-size:16px;color:var(--ink3);font-family:'Inter',sans-serif}
-.pm-sizes-block{margin-bottom:16px}
-.pm-lbl-title{font-size:11px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
-.pm-sizes{display:flex;gap:7px;flex-wrap:wrap}
-.size-btn{padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--ink2);transition:all .14s;font-family:'Inter',sans-serif}
-.size-btn:hover{border-color:var(--ink);color:var(--ink)}
-.size-btn.selected{border-color:var(--ink);background:var(--ink);color:#fff}
-.pm-notes{font-size:13px;color:var(--ink2);line-height:1.7;margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--r-sm);border:1px solid var(--border)}
-.pm-actions{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;margin-top:auto}
-.btn-add-cart-big{display:flex;align-items:center;justify-content:center;gap:8px;padding:13px 20px;background:var(--ink);color:#fff;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:all .14s}
-.btn-add-cart-big:hover{background:#333}
-.btn-instagram{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px 20px;background:#E1306C;color:#fff;border-radius:var(--r-sm);font-size:13px;font-weight:600;cursor:pointer;transition:background .14s;font-family:'Inter',sans-serif;border:none;text-decoration:none}
-.btn-instagram:hover{background:#c0255a}
-.pm-guarantee{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--border)}
-.pm-g-item{font-size:11px;color:var(--ink3)}
+/* ── DETAIL ── */
+.detail-modal{max-width:660px}
+.detail-hero{width:100%;height:200px;background:var(--bg3);display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid var(--line)}
+.detail-hero img{width:100%;height:100%;object-fit:cover}
+.hero-placeholder{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg3)}
+.hero-placeholder-name{font-family:'Playfair Display',serif;font-size:18px;color:var(--text2);opacity:.6;text-align:center;padding:0 20px}
+.detail-name{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;letter-spacing:.03em;line-height:1.1}
+.detail-path{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-top:4px}
+.detail-price{font-family:'Playfair Display',serif;font-size:28px;font-weight:500;color:var(--gold2);line-height:1}
+.detail-price span{font-size:16px;opacity:.7}
+.stock-badge{font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 10px;border-radius:20px;letter-spacing:.1em;text-transform:uppercase;display:inline-block}
+.stock-badge.green{background:rgba(74,175,120,.12);color:var(--green);border:1px solid rgba(74,175,120,.25)}
+.stock-badge.amber{background:var(--gd);color:var(--gold2);border:1px solid var(--gb)}
+.stock-badge.red{background:rgba(192,90,90,.12);color:var(--red-c);border:1px solid rgba(192,90,90,.25)}
+.stock-badge.purple{background:rgba(155,109,214,.12);color:#b88fe8;border:1px solid rgba(155,109,214,.25)}
+.detail-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.dfield{background:var(--bg3);border-radius:var(--r-sm);padding:9px 11px;border:1px solid var(--line)}
+.dfield.full{grid-column:1/-1}
+.dfl{font-family:'JetBrains Mono',monospace;font-size:8px;color:#c0bece;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px}
+.dfv{font-size:13px;font-weight:400;color:var(--text)}
+.dfv a{color:var(--gold2);text-decoration:none}
+.dfv a:hover{text-decoration:underline}
+.detail-notes{background:var(--bg3);border-radius:var(--r-sm);padding:10px 12px;border:1px solid var(--line);margin-bottom:14px}
+.detail-notes p{font-size:13px;color:var(--text2);line-height:1.7}
+.detail-actions{display:flex;gap:7px;flex-wrap:wrap}
+.marge-strip{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;flex-wrap:wrap}
+.marge-item{display:flex;flex-direction:column;gap:2px}
+.marge-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.marge-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500}
+.marge-val.buy{color:var(--red-c)}.marge-val.sell{color:var(--gold2)}.marge-val.profit{color:#4aaf78}
+.marge-arrow{color:var(--text3);font-size:14px}
 
-/* ── CART ── */
-.cart-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:flex;justify-content:flex-end;backdrop-filter:blur(3px)}
-.cart-overlay.hidden{display:none}
-.cart-panel{width:100%;max-width:420px;background:var(--surface);height:100%;display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,.15)}
-.cart-hdr{padding:20px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.cart-hdr h3{font-family:'Playfair Display',serif;font-size:20px}
-.cart-close{width:30px;height:30px;border:1px solid var(--border);background:var(--bg);border-radius:var(--r-sm);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
-.cart-items{flex:1;overflow-y:auto;padding:16px 22px}
-.cart-empty{text-align:center;padding:40px 0;color:var(--ink3);font-size:14px}
-.cart-item{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
-.cart-item-img{width:60px;height:60px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;background:#f0ede8}
-.cart-item-info{flex:1;min-width:0}
-.cart-item-name{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cart-item-size{font-size:11px;color:var(--ink3);font-family:'DM Mono',monospace;margin-top:2px}
-.cart-item-price{font-size:13px;font-weight:600;color:var(--ink);margin-top:3px;font-family:'DM Mono',monospace}
-.cart-item-remove{background:none;border:none;color:var(--ink3);cursor:pointer;font-size:13px;padding:4px;transition:color .14s}
-.cart-item-remove:hover{color:var(--ink)}
-.cart-footer{padding:18px 22px;border-top:1px solid var(--border)}
-.cart-total-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px}
-.cart-total-lbl{font-weight:600;font-size:14px}
-.cart-total-val{font-family:'Playfair Display',serif;font-size:20px;font-weight:500}
-.cart-checkout{width:100%;padding:13px;background:var(--ink);color:#fff;border:none;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .14s}
-.cart-checkout:hover{background:#333}
+/* ── FORM ── */
+.fg{margin-bottom:13px}
+.fg label{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;color:#c0bece;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;font-weight:500}
+.fg input,.fg textarea,.fg select{width:100%;padding:8px 11px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-family:'Inter',sans-serif;font-size:13px;transition:all .14s;outline:none}
+.fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--gb);background:var(--bg4)}
+.fg input::placeholder,.fg textarea::placeholder{color:var(--text3)}
+.fg select option{background:var(--bg3)}
+.fg textarea{min-height:68px;resize:vertical;line-height:1.6}
+.form-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ctx-pill{display:inline-flex;background:var(--gg);border:1px solid var(--gb);border-radius:4px;padding:5px 11px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);margin-bottom:14px;letter-spacing:.06em;line-height:1.5}
+.img-zone{border:1px dashed var(--line2);border-radius:var(--r);padding:14px;text-align:center;cursor:pointer;transition:all .14s;background:var(--bg3);min-height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px}
+.img-zone:hover{border-color:var(--gb);background:var(--gg)}
+.img-zone.filled{border-style:solid;border-color:var(--line2)}
+.img-zone img{max-width:100%;max-height:108px;border-radius:var(--r-sm)}
+.img-hint{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.section-divider{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;padding:10px 0 6px;border-top:1px solid var(--line);margin-top:4px;margin-bottom:8px}
 
+/* ── CALCULATOR ── */
+.calc-block{background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r);padding:14px 16px;margin-bottom:14px}
+.calc-title{display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px;font-weight:500}
+.calc-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.calc-field label{display:block;font-family:'JetBrains Mono',monospace;font-size:8px;color:#c0bece;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px}
+.calc-field input[type=number]{width:100%;padding:7px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg4);color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none}
+.calc-field input[type=number]:focus{border-color:var(--gb)}
+.calc-result-row{display:flex;align-items:center;gap:8px;background:var(--bg4);border-radius:var(--r-sm);padding:10px 12px;margin-top:4px;flex-wrap:wrap}
+.calc-stat{display:flex;flex-direction:column;gap:2px;flex:1;min-width:60px}
+.calc-stat.main{flex:1.4}
+.calc-stat-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.calc-stat-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--text2)}
+.calc-stat-val.green{color:#4aaf78}
+.calc-stat-val.highlight{font-size:16px;color:var(--gold2);font-weight:600}
+.calc-apply-btn{padding:6px 12px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s}
+.calc-apply-btn:hover{background:rgba(176,184,200,.18)}
 
+/* ── PUBLISH ── */
+.publish-toggle{background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r);padding:12px 14px;margin-top:4px}
+.publish-label{display:flex;align-items:center;gap:12px;cursor:pointer}
+.publish-label input[type=checkbox]{display:none}
+.publish-check-box{width:20px;height:20px;border:1.5px solid var(--line2);border-radius:5px;background:var(--bg4);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .14s}
+.publish-label input:checked~.publish-check-box{background:var(--green);border-color:var(--green)}
+.publish-label input:checked~.publish-check-box::after{content:'✓';color:#fff;font-size:12px;font-weight:700}
+.publish-text{display:flex;flex-direction:column;gap:2px}
+.publish-title{font-size:13px;font-weight:600;color:var(--text)}
+.publish-desc{font-size:10px;color:var(--text3);line-height:1.4}
+.publish-badge{position:absolute;top:8px;left:8px;background:var(--green);color:#fff;border-radius:4px;padding:2px 6px;font-size:9px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
+.publish-pill{font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 9px;border-radius:20px;letter-spacing:.08em;background:rgba(74,175,120,.12);color:var(--green);border:1px solid rgba(74,175,120,.25)}
+.publish-pill.off{background:rgba(138,136,160,.1);color:var(--text3);border-color:var(--line2)}
 
-/* ── TOAST ── */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--ink);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:500;z-index:999;opacity:0;transition:all .22s;pointer-events:none}
-.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ── SETTINGS GRID ── */
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;padding:14px}
+.settings-brand-card{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.settings-brand-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:var(--bg4);border-bottom:1px solid var(--line)}
+.settings-brand-lbl{font-size:12px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.settings-models-list{padding:8px;display:flex;flex-direction:column;gap:4px}
+.settings-model-chip{display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--bg2);border-radius:var(--r-sm);font-size:11px;color:var(--text2)}
+.settings-model-chip span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);background:var(--bg4);padding:1px 5px;border-radius:8px;flex-shrink:0}
+.settings-model-chip button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;padding:0 2px;flex-shrink:0;transition:color .14s}
+.settings-model-chip button:hover{color:var(--gold2)}
+.spinner{width:18px;height:18px;border:1.5px solid var(--line2);border-top-color:var(--gold2);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:22px;right:22px;padding:10px 16px;border-radius:var(--r-sm);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.06em;z-index:999;opacity:0;transform:translateY(14px);transition:all .2s;pointer-events:none;border:1px solid;box-shadow:0 8px 28px rgba(0,0,0,.6)}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{background:var(--bg2);color:#5abf88;border-color:rgba(74,175,120,.25)}
+.toast.err{background:var(--bg2);color:var(--red-c);border-color:rgba(192,90,90,.25)}
+.loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:999}
+.loading-screen.hidden{display:none}
+.loading-logo{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;letter-spacing:.18em;text-transform:uppercase}
+.loading-logo span{color:var(--gold2)}
+.loading-line{width:48px;height:1px;background:linear-gradient(90deg,transparent,var(--gold2),transparent)}
 
-/* ── GALLERY ── */
-.gallery-masonry{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
-.gallery-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;cursor:pointer;transition:all .18s}
-.gallery-card:hover{border-color:var(--border2);box-shadow:0 8px 32px rgba(0,0,0,.1);transform:translateY(-3px)}
-.gallery-img-wrap{aspect-ratio:1;overflow:hidden;background:#f0ede8}
-.gallery-img-wrap img{width:100%;height:100%;object-fit:cover;transition:transform .4s}
-.gallery-card:hover .gallery-img-wrap img{transform:scale(1.05)}
-.gallery-card-body{padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
-.gallery-card-name{font-size:13px;font-weight:600;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px}
-.gallery-card-price{font-family:'Playfair Display',serif;font-size:15px;color:var(--ink);flex-shrink:0}
+/* ── STATS ── */
+.stats-page{width:100%}
+.stats-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px}
+.kpi-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.kpi-card.accent{border-color:rgba(74,175,120,.3);background:rgba(74,175,120,.07)}
+.kpi-icon{font-size:18px;margin-bottom:2px}
+.kpi-val{font-family:'Playfair Display',serif;font-size:24px;font-weight:500;color:var(--text)}
+.kpi-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+.stats-two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.stats-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px}
+.stats-card-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px}
+.stats-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.stats-row:last-child{border-bottom:none}
+.stats-rank{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);width:14px;flex-shrink:0}
+.stats-thumb{width:34px;height:34px;object-fit:cover;border-radius:4px;flex-shrink:0}
+.stats-thumb-ph{width:34px;height:34px;border-radius:4px;background:var(--bg3);flex-shrink:0}
+.stats-row-name{flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-row-price{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold2);flex-shrink:0}
+.stats-sec-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.stats-sec-row:last-child{border-bottom:none}
+.stats-sec-icon{font-size:14px;flex-shrink:0}
+.stats-sec-name{font-size:12px;font-weight:500;width:110px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-bar-wrap{flex:1;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden}
+.stats-bar{height:100%;background:var(--gold2);border-radius:3px;transition:width .3s}
+.stats-sec-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);width:22px;text-align:right;flex-shrink:0}
+.stats-sec-val{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);width:44px;text-align:right;flex-shrink:0}
 
-/* ── SHOP FILTERS INLINE ── */
-.shop-filters-inline{display:flex;align-items:center;gap:10px;margin-right:14px}
-.sfi-group{display:flex;align-items:center;gap:6px}
-.sfi-lbl{font-size:11px;font-weight:600;color:var(--ink3);white-space:nowrap}
-.sfi-sep{width:1px;height:16px;background:var(--border)}
-
-/* ── CONTACT EXTRAS ── */
-.contact-hours{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);padding:14px 16px;margin-bottom:12px}
-.ch-title{font-size:11px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
-.ch-row{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);padding:4px 0;border-bottom:1px solid var(--border)}
-.ch-row:last-of-type{border-bottom:none}
-.ch-note{font-size:11px;color:var(--ink3);margin-top:8px;font-style:italic}
-.contact-socials{margin-top:4px}
-.cs-title{font-size:11px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
-.cs-links{display:flex;gap:8px}
-.cs-link{display:flex;align-items:center;gap:7px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);font-size:13px;font-weight:500;color:var(--ink2);transition:all .14s;text-decoration:none}
-.cs-link:hover{border-color:var(--border2);color:var(--ink);background:var(--bg)}
-
-/* ── PHOTO UPLOAD ── */
-.photo-upload-zone{border:1.5px dashed var(--border2);border-radius:var(--r-sm);padding:16px;text-align:center;cursor:pointer;transition:all .14s;background:var(--bg);display:flex;align-items:center;justify-content:center;gap:10px;color:var(--ink3);font-size:13px;font-family:'Inter',sans-serif}
-.photo-upload-zone:hover{border-color:var(--ink);color:var(--ink);background:#f5f3f0}
-
-/* ── HAMBURGER + MOBILE MENU ── */
-.hamburger{display:none;flex-direction:column;justify-content:center;gap:5px;width:38px;height:38px;background:transparent;border:1px solid var(--border);border-radius:var(--r-sm);cursor:pointer;padding:8px}
-.hamburger span{display:block;width:100%;height:2px;background:var(--ink);border-radius:2px;transition:all .2s}
-.hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
-.hamburger.open span:nth-child(2){opacity:0}
-.hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
-.desktop-only{display:flex}
-.mobile-menu{position:fixed;top:64px;left:0;right:0;background:var(--surface);border-bottom:1px solid var(--border);z-index:99;padding:12px 16px;display:flex;flex-direction:column;gap:4px;box-shadow:0 8px 24px rgba(0,0,0,.1)}
-.mobile-menu.hidden{display:none}
-.mobile-menu-search{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:6px}
-.mobile-menu-search svg{color:var(--ink3);flex-shrink:0}
-.mobile-menu-search input{border:none;background:transparent;font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);outline:none;width:100%}
-.mobile-nav-link{width:100%;padding:12px 14px;text-align:left;background:transparent;border:none;font-size:15px;font-weight:500;color:var(--ink);cursor:pointer;font-family:'Inter',sans-serif;border-radius:var(--r-sm);transition:background .12s}
-.mobile-nav-link:hover{background:var(--bg)}
-.mobile-nav-instagram{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;background:var(--ink);color:#fff;border:none;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;margin-top:6px}
-
-
-
-/* Tablette */
-@media(max-width:1024px){
-  .nav-search{width:160px}
-  .nav-search:focus{width:220px}
-  .product-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
-  .about-grid{gap:40px}
-  .custom-grid,.contact-grid{gap:32px}
-}
-
-/* Mobile */
-@media(max-width:768px){
-  /* Nav */
-  .nav-inner{grid-template-columns:1fr auto}
-  .nav-links{display:none}
-  .nav-search-wrap{display:none}
-  .desktop-only{display:none !important}
-  .hamburger{display:flex}
-  .nav-right{gap:6px}
-
-  /* Hero */
-  .hero{padding:44px 20px 52px}
-  .hero-title{font-size:clamp(26px,7vw,40px);line-height:1.15}
-  .hero-sub{font-size:14px;margin-bottom:28px}
-  .hero-btns{flex-direction:row;flex-wrap:wrap;gap:10px;justify-content:center}
-  .btn-primary,.btn-secondary{flex:1;min-width:140px;max-width:200px;padding:12px 16px;font-size:13px}
-
-  /* Trust bar */
-  .trust-inner{gap:12px 20px}
-  .trust-item{font-size:11px}
-
-  /* Section */
-  .section{padding:36px 16px}
-  .section-title{font-size:clamp(22px,5vw,30px)}
-
-  /* Shop */
-  .shop-topbar{padding:10px 16px;top:58px}
-  .shop-topbar-inner{gap:8px}
-  .shop-tags-bar{padding:8px 16px}
-  .shop-tags-inner{gap:6px}
-  .tags-sep{display:none}
-  .shop-filters-inline{flex-wrap:wrap;gap:6px}
-  .shop-right{flex-wrap:wrap;gap:6px}
-  .shop-grid-wrap{padding:14px 12px}
-  .product-grid{grid-template-columns:repeat(2,1fr);gap:10px}
-  .product-grid{grid-template-columns:repeat(2,1fr);gap:10px}
-  .card-body{padding:10px 10px 12px}
-  .card-name{font-size:12px}
-  .card-price{font-size:15px}
-  .card-btn{padding:6px 10px;font-size:10px}
-  .filter-bar{padding:8px 16px}
-  .filter-bar-inner{gap:6px;flex-wrap:wrap}
-
-  /* Product modal */
-  .pm-modal{grid-template-columns:1fr;max-height:96vh}
-  .pm-img{aspect-ratio:4/3}
-  .pm-info{padding:16px}
-  .pm-name{font-size:19px}
-  .pm-price{font-size:21px;margin-bottom:12px}
-
-  /* Grids */
-  .about-grid,.contact-grid,.custom-grid{grid-template-columns:1fr;gap:24px}
-  .steps{grid-template-columns:1fr;gap:20px}
-
-  /* Footer */
-  .footer-links{gap:12px;font-size:12px}
-  .footer-logo{font-size:18px}
-
-  /* Cart */
-  .cart-panel{max-width:100%}
-
-  /* Contact hours */
-  .contact-hours{padding:12px}
-}
-
-/* Très petit mobile */
-@media(max-width:390px){
-  .product-grid{grid-template-columns:1fr}
-  .hero-title{font-size:24px}
-  .hero-btns{flex-direction:column;align-items:stretch}
-  .btn-primary,.btn-secondary{max-width:100%;text-align:center}
-  .shop-cats{gap:4px}
-  .cat-btn{font-size:10px;padding:5px 9px}
-}
+/* ── QUICK FILTERS ── */
+.quick-filter-bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0 12px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.qf-group{display:flex;align-items:center;gap:6px}
+.qf-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
+.qf-sel{padding:4px 8px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text2);font-family:'Inter',sans-serif;font-size:11px;cursor:pointer;outline:none}
+.qf-sel option{background:var(--bg3)}
+.qf-slider{width:70px;accent-color:var(--gold2);cursor:pointer}
+.qf-disp{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold2);min-width:28px}
 </style>
 </head>
 <body>
 
-<!-- NAV -->
-<nav class="nav">
-  <div class="nav-inner">
-    <div class="nav-logo" onclick="showPage('home')">Adri <em>Mods</em></div>
-    <div class="nav-links">
-      <button class="nav-link active" data-page="home" onclick="showPage('home')">Accueil</button>
-      <button class="nav-link" data-page="shop" onclick="showPage('shop')">Boutique</button>
-      
-      <button class="nav-link" data-page="about" onclick="showPage('about')">À propos</button>
-      <button class="nav-link" data-page="contact" onclick="showPage('contact')">Contact</button>
-    </div>
-    <div class="nav-right">
-      <div class="nav-search-wrap">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input class="nav-search" id="nav-search-inp" type="text" placeholder="Rechercher…" oninput="onSearchInput(this.value)" autocomplete="off">
-        <div class="search-dropdown hidden" id="search-dropdown"></div>
-      </div>
-      <button class="nav-cart" onclick="openCart()">
-        <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-        <span class="cart-badge" id="cart-badge">0</span>
-      </button>
-      <button class="nav-cta desktop-only" onclick="openSocial(INSTAGRAM)">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><circle cx="12" cy="12" r="4" fill="none"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
-        Instagram
-      </button>
-      <!-- Hamburger -->
-      <button class="hamburger" id="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </div>
-</nav>
+<div class="loading-screen" id="loading">
+  <div class="loading-logo">Seiko <span>Mod</span></div>
+  <div class="loading-line"></div>
+  <div class="spinner"></div>
+</div>
 
-<!-- MOBILE MENU -->
-<div class="mobile-menu hidden" id="mobile-menu">
-  <div class="mobile-menu-search">
-    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    <input type="text" placeholder="Rechercher…" oninput="onSearchInput(this.value);closeMobileMenu();showPage('shop')" autocomplete="off">
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="16" y2="9"/></svg>
+      </div>
+      <div><div class="logo-main">Seiko Mod</div><div class="logo-sub">Catalogue Admin</div></div>
+    </div>
+    <div class="hdr-div"></div>
+    <div class="hdr-stats">
+      <div class="hdr-stat"><div class="hdr-stat-lbl">Pièces</div><div class="hdr-stat-val" id="hdr-total">0</div></div>
+      <div class="hdr-stat"><div class="hdr-stat-lbl">Valeur</div><div class="hdr-stat-val g" id="hdr-val">0.00€</div></div>
+    </div>
+    <div class="hdr-sp"></div>
+    <div class="hdr-btns">
+      <button class="view-btn active" data-view="catalogue" onclick="setView('catalogue')">📦 Catalogue</button>
+      <button class="view-btn" data-view="settings" onclick="setView('settings')">⚙️ Paramètres</button>
+      <button class="btn-sb" id="theme-btn" onclick="toggleTheme()" title="Mode clair/sombre">☀</button>
+      <button class="btn-sb" onclick="exportJSON()">↓ Export</button>
+      <label class="btn-sb" style="cursor:pointer">↑ Import<input type="file" accept=".json" style="display:none" onchange="importJSON(this)"></label>
+    </div>
   </div>
-  <button class="mobile-nav-link" onclick="showPage('home');closeMobileMenu()">Accueil</button>
-  <button class="mobile-nav-link" onclick="showPage('shop');closeMobileMenu()">Boutique</button>
-  
-  <button class="mobile-nav-link" onclick="showPage('about');closeMobileMenu()">À propos</button>
-  <button class="mobile-nav-link" onclick="showPage('contact');closeMobileMenu()">Contact</button>
-  <button class="mobile-nav-instagram" onclick="openSocial(INSTAGRAM);closeMobileMenu()">
-    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="currentColor" stroke="none"/></svg>
-    Instagram
+  <div class="nav-bar" id="nav-tabs"></div>
+</div>
+
+<!-- SUBHEADER -->
+<div class="sub-bar">
+  <button class="back-btn" id="back-btn" style="display:none" onclick="goBack()">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15,18 9,12 15,6"/></svg>
+    Retour
   </button>
+  <div class="breadcrumb" id="breadcrumb"></div>
 </div>
 
-<!-- ══ HOME ══ -->
-<div class="page active" id="page-home">
-  <div class="page-content">
-    <section class="hero">
-      <div class="hero-eyebrow">Artisan Horloger</div>
-      <h1 class="hero-title">Des montres uniques,<br><em>assemblées avec passion</em></h1>
-      <p class="hero-sub">Chaque mod est construit à la main à partir de mouvements Seiko et de composants premium. Une montre qui vous ressemble.</p>
-      <div class="hero-btns">
-        <button class="btn-primary" onclick="showPage('shop')">Voir la boutique</button>
-        
-      </div>
-    </section>
-    <div class="trust-bar">
-      <div class="trust-inner">
-        
-        <div class="trust-item"><span>⌚</span> Mouvement Seiko</div>
-        <div class="trust-item"><span>📦</span> Livraison Europe</div>
-        <div class="trust-item"><span>📸</span> Instagram & Vinted</div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-hdr">
-        <div class="section-eyebrow">Nos créations</div>
-        <h2 class="section-title">Dernières montres disponibles</h2>
-        <p class="section-sub">Chaque pièce est unique. Une fois vendue, elle ne revient pas.</p>
-      </div>
-      <div class="product-grid" id="featured-grid"><div class="no-products">Chargement…</div></div>
-      <div style="text-align:center;margin-top:32px">
-        <button class="btn-primary" style="background:var(--ink);color:#fff" onclick="showPage('shop')">Voir toute la boutique →</button>
-      </div>
-    </div>
-    <div style="background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
-      <div class="section">
-        <div class="section-hdr">
-          <div class="section-eyebrow">Comment ça marche</div>
-          <h2 class="section-title">Simple comme bonjour</h2>
-        </div>
-        <div class="steps">
-          <div class="step"><div class="step-num">1</div><div class="step-title">Vous choisissez</div><div class="step-text">Parcourez la boutique ou demandez une création sur mesure selon vos envies.</div></div>
-          <div class="step"><div class="step-num">2</div><div class="step-title">Vous commandez</div><div class="step-text">Un message Instagram ou Vinted suffit. On confirme ensemble les détails et le paiement.</div></div>
-          <div class="step"><div class="step-num">3</div><div class="step-title">Vous recevez</div><div class="step-text">Votre montre est emballée avec soin et expédiée partout en Europe. Suivi inclus.</div></div>
-        </div>
-      </div>
-    </div>
-    <div class="section">
-      <div class="section-hdr">
-        <div class="section-eyebrow">Accessoires</div>
-        <h2 class="section-title">Protégez votre montre</h2>
-        <p class="section-sub">Boîtes de voyage et de rangement sélectionnées pour votre collection.</p>
-      </div>
-      <div style="text-align:center">
-        <button class="btn-primary" style="background:var(--ink);color:#fff" onclick="setCategory('accessories');showPage('shop')">Voir les accessoires →</button>
-      </div>
-    </div>
-  </div>
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-logo">Adri <em>Mods</em></div>
-      <div class="footer-sub">Montres Seiko Mod artisanales</div>
-      <div class="footer-links">
-        <span class="footer-link" onclick="showPage('home')">Accueil</span>
-        <span class="footer-link" onclick="showPage('shop')">Boutique</span>
-        
-        <span class="footer-link" onclick="showPage('about')">À propos</span>
-        <span class="footer-link" onclick="showPage('contact')">Contact</span>
-      </div>
-      <div class="footer-copy">© 2025 Adri Mods — Tous droits réservés</div>
-    </div>
-  </footer>
-</div>
+<div class="layout"><div class="main" id="main"></div></div>
 
-<!-- ══ SHOP ══ -->
-<div class="page" id="page-shop">
-  <div class="page-content">
-    <!-- Ligne 1 : Trier + Prix + Count -->
-    <div class="shop-topbar">
-      <div class="shop-topbar-inner">
-        <div class="shop-filters-inline">
-          <div class="sfi-group">
-            <span class="sfi-lbl">Trier</span>
-            <select class="filter-select" onchange="setSort(this.value)">
-              <option value="featured">En vedette</option>
-              <option value="newest">Nouveautés</option>
-              <option value="available">Disponibles d'abord</option>
-              <option value="name-az">Alphabétique, A → Z</option>
-              <option value="name-za">Alphabétique, Z → A</option>
-              <option value="price-asc">Prix : faible à élevé</option>
-              <option value="price-desc">Prix : élevé à faible</option>
-              <option value="date-asc">Date, ancienne → récente</option>
-              <option value="date-desc">Date, récente → ancienne</option>
-            </select>
-          </div>
-          <div class="sfi-sep"></div>
-          <div class="sfi-group">
-            <span class="sfi-lbl">Prix</span>
-            <input type="range" class="price-slider" id="price-min-slider" min="0" max="1000" value="0" oninput="onPriceMinChange(this.value)">
-            <input type="range" class="price-slider" id="price-max-slider" min="0" max="1000" value="1000" oninput="onPriceMaxChange(this.value)">
-            <span class="price-range-display" id="price-range-display">0€ — Max</span>
-          </div>
-        </div>
-        <span class="shop-count" id="shop-count"></span>
-      </div>
+<!-- ADD / EDIT MODAL -->
+<div class="overlay hidden" id="add-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-hdr">
+      <div class="modal-title" id="add-title">Nouvelle pièce</div>
+      <button class="modal-x" onclick="closeModal('add-modal')">✕</button>
     </div>
-    <!-- Ligne 2 : Catégories + Tags modèles -->
-    <div class="shop-tags-bar">
-      <div class="shop-tags-inner">
-        <div class="shop-cats">
-          <button class="cat-btn active" data-cat="all" onclick="setCategory('all')">Tout</button>
-          <button class="cat-btn" data-cat="watches" onclick="setCategory('watches')">⌚ Montres</button>
-          <button class="cat-btn" data-cat="accessories" onclick="setCategory('accessories')">🎁 Accessoires</button>
-        </div>
-        <div class="tags-sep"></div>
-        <div class="model-tags" id="model-tags"></div>
-      </div>
-    </div>
-    <div class="shop-grid-wrap">
-      <div class="product-grid" id="shop-grid"><div class="no-products">Chargement…</div></div>
-    </div>
-  </div>
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-logo">Adri <em>Mods</em></div>
-      <div class="footer-sub">Montres Seiko Mod artisanales</div>
-      <div class="footer-links">
-        <span class="footer-link" onclick="showPage('home')">Accueil</span>
-        <span class="footer-link" onclick="showPage('shop')">Boutique</span>
-        
-        <span class="footer-link" onclick="showPage('about')">À propos</span>
-        <span class="footer-link" onclick="showPage('contact')">Contact</span>
-      </div>
-      <div class="footer-copy">© 2025 Adri Mods — Tous droits réservés</div>
-    </div>
-  </footer>
-</div>
+    <div class="modal-body">
+      <div class="ctx-pill" id="add-ctx"></div>
 
-<!-- ══ ABOUT ══ -->
-<div class="page" id="page-about">
-  <div class="page-content">
-    <div class="section">
-      <div class="about-grid">
-        <div class="about-img-box">
-          <img id="about-img-el" src="" alt="Adri Mods atelier" style="display:none">
-          <span class="about-icon-fb" id="about-icon-fallback">⌚</span>
-        </div>
-        <div class="about-text">
-          <div class="section-eyebrow" style="text-align:left;margin-bottom:10px">Notre histoire</div>
-          <h2>La passion de<br><em>l'horlogerie mod</em></h2>
-          <p>Adri Mods est né d'une passion simple : transformer des mouvements Seiko robustes en montres d'exception originales, à une fraction du prix des grandes marques.</p>
-          <p>Chaque mod est assemblé avec soin, avec des composants soigneusement sélectionnés. Le résultat : une montre unique, fiable, et qui raconte votre histoire.</p>
-          <p>Que vous cherchiez quelque chose de précis ou que vous vouliez une création sur mesure, nous pouvons créer la montre de vos rêves.</p>
-          <div class="about-hint">💡 Pour changer la photo : uploadez sur Cloudinary, copiez le lien, collez dans la variable <code>ABOUT_PHOTO</code> en haut du fichier HTML.</div>
-          <div class="about-tags">
-            
-            <span class="about-tag">⚙️ Seiko NH / VK</span>
-            
-            <span class="about-tag">📦 Livraison Europe</span>
-            
+      <div class="fg">
+        <label>Photo</label>
+        <div class="img-zone" id="img-zone" onclick="document.getElementById('img-file').click()">
+          <div id="img-ph">
+            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--text3)"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg>
+            <div class="img-hint">Cliquer pour ajouter</div>
           </div>
+          <img id="img-prev" style="display:none">
+          <input type="file" id="img-file" accept="image/*" style="display:none" onchange="handleImg(this)">
         </div>
       </div>
-    </div>
-  </div>
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-logo">Adri <em>Mods</em></div>
-      <div class="footer-sub">Montres Seiko Mod artisanales</div>
-      <div class="footer-links">
-        <span class="footer-link" onclick="showPage('home')">Accueil</span>
-        <span class="footer-link" onclick="showPage('shop')">Boutique</span>
-        
-        <span class="footer-link" onclick="showPage('about')">À propos</span>
-        <span class="footer-link" onclick="showPage('contact')">Contact</span>
-      </div>
-      <div class="footer-copy">© 2025 Adri Mods — Tous droits réservés</div>
-    </div>
-  </footer>
-</div>
 
-<!-- ══ CONTACT ══ -->
-<div class="page" id="page-contact">
-  <div class="page-content">
-    <div class="section" id="contact">
-      <div class="section-hdr">
-        <div class="section-eyebrow">Contact</div>
-        <h2 class="section-title">Une question ? Une commande ?</h2>
-        <p class="section-sub">Réponse garantie sous 24h.</p>
-      </div>
-      <div class="contact-grid">
-        <div class="contact-info">
-          <h3>Parlons-en</h3>
-          <p>Pour commander, demander un devis ou poser une question — Instagram ou Vinted sont les meilleurs moyens de nous joindre.</p>
-          <div class="contact-option" onclick="openSocial(INSTAGRAM)" style="margin-bottom:10px">
-            <div class="co-icon" style="background:#E1306C"><svg width="18" height="18" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1.5" fill="#fff" stroke="none"/></svg></div>
-            <div><div class="contact-option-title">Instagram</div><div class="contact-option-sub">@adrimods · Messages directs</div></div>
-          </div>
-          <div class="contact-option" onclick="openSocial(VINTED)" style="margin-bottom:10px">
-            <div class="co-icon" style="background:#09b1ba"><svg width="18" height="18" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8l4 8 4-8"/></svg></div>
-            <div><div class="contact-option-title">Vinted</div><div class="contact-option-sub">Boutique Vinted · Achat sécurisé</div></div>
-          </div>
-          <div class="contact-hours">
-            <div class="ch-title">🕐 Horaires de réponse</div>
-            <div class="ch-row"><span>Lundi — Vendredi</span><span>9h → 20h</span></div>
-            <div class="ch-row"><span>Week-end</span><span>10h → 18h</span></div>
-            <div class="ch-note">Réponse garantie sous 24/48h</div>
-          </div>
-        </div>
-        <div class="contact-form-box">
-          <h3>Envoyer un message</h3>
-          <form id="contact-form" onsubmit="sendContact(event)">
-            <div class="cf-group"><label>Votre nom</label><input type="text" id="c-name" placeholder="Jean Dupont" required></div>
-            <div class="cf-group"><label>Email</label><input type="email" id="c-email" placeholder="jean@email.com" required></div>
-            <div class="cf-group"><label>Message</label><textarea id="c-msg" placeholder="Votre message…" required></textarea></div>
-            <button type="submit" class="cf-submit" id="cf-btn">Envoyer</button>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <div class="footer-logo">Adri <em>Mods</em></div>
-      <div class="footer-sub">Montres Seiko Mod artisanales</div>
-      <div class="footer-links">
-        <span class="footer-link" onclick="showPage('home')">Accueil</span>
-        <span class="footer-link" onclick="showPage('shop')">Boutique</span>
-        
-        <span class="footer-link" onclick="showPage('about')">À propos</span>
-        <span class="footer-link" onclick="showPage('contact')">Contact</span>
-      </div>
-      <div class="footer-copy">© 2025 Adri Mods — Tous droits réservés</div>
-    </div>
-  </footer>
-</div>
+      <div class="fg"><label>Nom *</label><input type="text" id="f-name" placeholder="ex: Bracelet Jubilée 20mm"></div>
 
-<!-- PRODUCT MODAL -->
-<div class="pm-overlay hidden" id="product-modal">
-  <div class="pm-modal">
-    <button class="pm-close" onclick="closeProductModal()">✕</button>
-    <div id="product-modal-body" style="display:contents"></div>
+      <!-- Tailles (bracelets + montres complètes) -->
+      <div id="sizes-section" style="display:none">
+        <div class="fg"><label>Tailles disponibles <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(ex: 36, 39, 41 — le "mm" est ajouté automatiquement)</span></label><input type="text" id="f-sizes" placeholder="36, 39, 41"></div>
+      </div>
+
+      <!-- Prix d'achat PERSONNEL (toutes sections) -->
+      <div id="buy-price-section">
+        <div class="section-divider">💰 Prix & Stock</div>
+        <div class="fg"><label>Mon prix d'achat (€) — ce que je paie</label><input type="number" id="f-buy-price" placeholder="ex: 48.00" min="0" step="0.01" oninput="calcPrice()"></div>
+      </div>
+
+      <!-- Calculatrice (montres complètes seulement) -->
+      <div id="calc-section" style="display:none">
+        <div class="calc-block">
+          <div class="calc-title">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
+            Calcul de marge — basé sur le prix de vente
+          </div>
+          <div class="calc-row">
+            <div class="calc-field"><label>Livraison fournisseur (€)</label><input type="number" id="calc-ship-in" value="12.5" min="0" step="0.5" oninput="calcPrice()"></div>
+            <div class="calc-field"><label>Main d'œuvre (€)</label><input type="number" id="calc-labor" value="20" min="0" step="1" oninput="calcPrice()"></div>
+          </div>
+          <div class="calc-row">
+            <div class="calc-field"><label>Expédition client (€)</label><input type="number" id="calc-ship-out" value="5" min="0" step="0.5" oninput="calcPrice()"></div>
+            <div class="calc-field" style="display:flex;align-items:center;gap:8px;padding-top:18px">
+              <input type="checkbox" id="calc-vinted" onchange="calcPrice()" style="width:16px;height:16px;accent-color:var(--gold2)">
+              <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;color:var(--text2)" for="calc-vinted">Vente Vinted (+5%)</label>
+            </div>
+          </div>
+          <div class="calc-result-row">
+            <div class="calc-stat"><div class="calc-stat-lbl">Coût total</div><div class="calc-stat-val" id="calc-cout">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Bénéfice net</div><div class="calc-stat-val green" id="calc-benefice">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Marge</div><div class="calc-stat-val green" id="calc-marge-pct">—</div></div>
+            <div class="calc-stat main"><div class="calc-stat-lbl">Multiplicateur</div><div class="calc-stat-val highlight" id="calc-marge-val">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Prix de vente</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="price-resale-section">
+        <div class="fg"><label>Prix client / Revente (€)</label><input type="number" id="f-price" placeholder="0.00" min="0" step="0.01" oninput="onManualPriceChange()"></div>
+      </div>
+      <div class="fg"><label>Stock</label>
+        <select id="f-stock">
+          <option value="stock">En stock</option>
+          <option value="commande">En commande</option>
+          <option value="rupture">Rupture</option>
+          <option value="vendu">Vendu</option>
+        </select>
+      </div>
+
+      <div class="fg"><label>Lien fournisseur</label><input type="url" id="f-link" placeholder="https://…"></div>
+      <div class="fg"><label>Notes</label><textarea id="f-notes" placeholder="Coloris, état, détails…"></textarea></div>
+
+      <!-- Publier sur Adri Mods -->
+      <div class="publish-toggle">
+        <label class="publish-label" for="f-publish">
+          <input type="checkbox" id="f-publish">
+          <span class="publish-check-box"></span>
+          <div class="publish-text">
+            <span class="publish-title">🌐 Publier sur Adri Mods</span>
+            <span class="publish-desc">Rend visible sur le site client (montres complètes & accessoires uniquement)</span>
+          </div>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline sm" onclick="closeModal('add-modal')">Annuler</button>
+      <button class="btn-gold sm" id="save-btn" onclick="savePart()">Enregistrer</button>
+    </div>
   </div>
 </div>
 
-<!-- CART MODAL -->
-<div class="cart-overlay hidden" id="cart-modal" onclick="if(event.target===this)closeCart()">
-  <div class="cart-panel">
-    <div class="cart-hdr"><h3>Mon panier</h3><button class="cart-close" onclick="closeCart()">✕</button></div>
-    <div class="cart-items" id="cart-items"></div>
-    <div class="cart-footer">
-      <div class="cart-total-row"><span class="cart-total-lbl">Total</span><span class="cart-total-val" id="cart-total">0.00 €</span></div>
-      <button class="cart-checkout" id="cart-checkout-btn" style="display:none" onclick="checkoutCart()">
-        <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-        Commander via Instagram
-      </button>
+<!-- DETAIL MODAL -->
+<div class="overlay hidden" id="detail-modal">
+  <div class="modal detail-modal"><div id="detail-body"></div></div>
+</div>
+
+<!-- CUSTOM MODAL -->
+<div class="overlay hidden" id="custom-modal">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-hdr">
+      <div class="modal-title" id="custom-title">—</div>
+      <button class="modal-x" onclick="closeModal('custom-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label id="custom-lbl">Nom</label><input type="text" id="custom-inp" placeholder=""></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline sm" onclick="closeModal('custom-modal')">Annuler</button>
+      <button class="btn-gold sm" onclick="saveCustom()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- RENAME MODAL -->
+<div class="overlay hidden" id="rename-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-hdr">
+      <div class="modal-title" id="rename-title">Renommer</div>
+      <button class="modal-x" onclick="closeModal('rename-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text3);margin-bottom:14px" id="rename-current"></p>
+      <input type="hidden" id="rename-type">
+      <div class="fg"><label>Nouveau nom</label><input type="text" id="rename-inp" placeholder="Nouveau nom…"></div>
+      <p style="font-size:11px;color:var(--text3);margin-top:4px;line-height:1.6">⚠️ Toutes les pièces associées seront automatiquement mises à jour.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline sm" onclick="closeModal('rename-modal')">Annuler</button>
+      <button class="btn-gold sm" onclick="saveRename()">Renommer</button>
     </div>
   </div>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<script type="module">
+const obs=new MutationObserver(()=>{
+  if(document.getElementById('main').children.length>0){document.getElementById('loading').classList.add('hidden');obs.disconnect();}
+});
+obs.observe(document.getElementById('main'),{childList:true});
+setTimeout(()=>document.getElementById('loading').classList.add('hidden'),4000);
+</script>
 </body>
 </html>
