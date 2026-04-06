@@ -119,6 +119,9 @@ window.savePart = async function() {
   const sec=DEFS.find(s=>s.id===addCtx.sid);
   const isComplete=addCtx.sid==='complete';
   const hasSizes=sec?.hasSizes||false;
+  // Ajoute " - Seiko Mod" automatiquement pour les montres complètes
+  const suffix = ' - Seiko Mod';
+  const finalName = isComplete && !name.endsWith(suffix) ? name + suffix : name;
   const rawSizes = hasSizes?(document.getElementById('f-sizes')?.value||''):'';
   // Ajoute "mm" automatiquement si pas déjà présent
   const sizes = rawSizes ? rawSizes.split(',').map(s=>{
@@ -126,7 +129,7 @@ window.savePart = async function() {
     return t && !t.toLowerCase().includes('mm') ? t+'mm' : t;
   }).filter(Boolean).join(', ') : '';
   const p={
-    sid:addCtx.sid, brand:addCtx.brand, model:addCtx.model, name,
+    sid:addCtx.sid, brand:addCtx.brand, model:addCtx.model, name:finalName,
     sizes,
     buyPrice: document.getElementById('f-buy-price')?.value||'',
     price:    document.getElementById('f-price').value||'',
@@ -164,18 +167,19 @@ window.calcPrice = function() {
   const ship_in  = parseFloat(document.getElementById('calc-ship-in')?.value)||12.5;
   const labor    = parseFloat(document.getElementById('calc-labor')?.value)||20;
   const ship_out = parseFloat(document.getElementById('calc-ship-out')?.value)||5;
-  const marge    = parseFloat(document.getElementById('calc-marge')?.value)||1.73;
   const vinted   = document.getElementById('calc-vinted')?.checked;
-  const cout = achat+ship_in+labor+ship_out;
-  let prix = cout*marge;
-  if(vinted) prix=(prix+0.70)/(1-0.05);
-  const benef=prix-cout, pct=cout>0?((benef/prix)*100).toFixed(0):0;
-  document.getElementById('calc-cout').textContent=cout.toFixed(2)+'€';
-  document.getElementById('calc-benefice').textContent=benef.toFixed(2)+'€';
-  document.getElementById('calc-marge-pct').textContent=pct+'%';
-  document.getElementById('calc-result').textContent=prix.toFixed(2)+'€';
-  document.getElementById('calc-marge-val').textContent=marge.toFixed(1)+'x';
-  // ⚠️ Ne touche JAMAIS au prix client automatiquement — uniquement via "Appliquer →"
+  // Prix de vente = ce qui est dans le champ prix (189,90€ par défaut)
+  const prixVente = parseFloat(document.getElementById('f-price')?.value)||189.90;
+  const cout = achat + ship_in + labor + ship_out;
+  let prixNet = vinted ? (prixVente*(1-0.05)-0.70) : prixVente;
+  const benef = prixNet - cout;
+  const marge = cout > 0 ? (prixNet/cout) : 0;
+  const pct   = prixNet > 0 ? ((benef/prixNet)*100).toFixed(0) : 0;
+  document.getElementById('calc-cout').textContent    = cout.toFixed(2)+'€';
+  document.getElementById('calc-benefice').textContent= benef.toFixed(2)+'€';
+  document.getElementById('calc-marge-pct').textContent= pct+'%';
+  document.getElementById('calc-result').textContent  = prixVente.toFixed(2)+'€';
+  document.getElementById('calc-marge-val').textContent= marge.toFixed(2)+'x';
 };
 
 // Reverse calc: when user manually types a price, update the margin slider
@@ -583,21 +587,19 @@ window.openEditPart = function(id){
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
   openModal('add-modal');
-  // Show calc stats without overwriting the saved price
+  // Show calc stats based on selling price vs buy price
   if(isComplete&&p.buyPrice){
     const achat=parseFloat(p.buyPrice)||0;
     const ship_in=12.5, labor=20, ship_out=5;
     const cout=achat+ship_in+labor+ship_out;
-    const savedPrice=parseFloat(p.price)||0;
-    const benef=savedPrice-cout, pct=cout>0?((benef/savedPrice)*100).toFixed(0):0;
-    const marge=cout>0?(savedPrice/cout).toFixed(2):1.73;
+    const prixVente=parseFloat(p.price)||189.90;
+    const benef=prixVente-cout, pct=prixVente>0?((benef/prixVente)*100).toFixed(0):0;
+    const marge=cout>0?(prixVente/cout).toFixed(2):0;
     document.getElementById('calc-cout').textContent=cout.toFixed(2)+'€';
     document.getElementById('calc-benefice').textContent=benef.toFixed(2)+'€';
     document.getElementById('calc-marge-pct').textContent=pct+'%';
-    document.getElementById('calc-result').textContent=savedPrice.toFixed(2)+'€';
-    document.getElementById('calc-marge-val').textContent=Math.min(3.5,Math.max(1.2,parseFloat(marge))).toFixed(1)+'x';
-    const slider=document.getElementById('calc-marge');
-    if(slider) slider.value=Math.min(3.5,Math.max(1.2,parseFloat(marge)));
+    document.getElementById('calc-result').textContent=prixVente.toFixed(2)+'€';
+    document.getElementById('calc-marge-val').textContent=parseFloat(marge).toFixed(2)+'x';
   }
 };
 
@@ -1202,7 +1204,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
         <div class="calc-block">
           <div class="calc-title">
             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>
-            Calculatrice de prix de vente
+            Calcul de marge — basé sur le prix de vente
           </div>
           <div class="calc-row">
             <div class="calc-field"><label>Livraison fournisseur (€)</label><input type="number" id="calc-ship-in" value="12.5" min="0" step="0.5" oninput="calcPrice()"></div>
@@ -1215,18 +1217,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
               <label style="text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;color:var(--text2)" for="calc-vinted">Vente Vinted (+5%)</label>
             </div>
           </div>
-          <div class="calc-row" style="grid-template-columns:1fr">
-            <div class="calc-field">
-              <label>Multiplicateur marge — <span id="calc-marge-val">1.7x</span></label>
-              <input type="range" id="calc-marge" min="1.2" max="3.5" step="0.1" value="1.73" oninput="calcPrice()" style="width:100%;margin-top:6px;accent-color:var(--gold2)">
-            </div>
-          </div>
           <div class="calc-result-row">
             <div class="calc-stat"><div class="calc-stat-lbl">Coût total</div><div class="calc-stat-val" id="calc-cout">—</div></div>
-            <div class="calc-stat"><div class="calc-stat-lbl">Bénéfice</div><div class="calc-stat-val green" id="calc-benefice">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Bénéfice net</div><div class="calc-stat-val green" id="calc-benefice">—</div></div>
             <div class="calc-stat"><div class="calc-stat-lbl">Marge</div><div class="calc-stat-val green" id="calc-marge-pct">—</div></div>
-            <div class="calc-stat main"><div class="calc-stat-lbl">Prix suggéré</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
-            <button class="calc-apply-btn" onclick="applyCalcPrice()">Appliquer →</button>
+            <div class="calc-stat main"><div class="calc-stat-lbl">Multiplicateur</div><div class="calc-stat-val highlight" id="calc-marge-val">—</div></div>
+            <div class="calc-stat"><div class="calc-stat-lbl">Prix de vente</div><div class="calc-stat-val highlight" id="calc-result">—</div></div>
           </div>
         </div>
       </div>
