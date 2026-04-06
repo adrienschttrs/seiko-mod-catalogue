@@ -119,9 +119,15 @@ window.savePart = async function() {
   const sec=DEFS.find(s=>s.id===addCtx.sid);
   const isComplete=addCtx.sid==='complete';
   const hasSizes=sec?.hasSizes||false;
+  const rawSizes = hasSizes?(document.getElementById('f-sizes')?.value||''):'';
+  // Ajoute "mm" automatiquement si pas déjà présent
+  const sizes = rawSizes ? rawSizes.split(',').map(s=>{
+    const t=s.trim();
+    return t && !t.toLowerCase().includes('mm') ? t+'mm' : t;
+  }).filter(Boolean).join(', ') : '';
   const p={
     sid:addCtx.sid, brand:addCtx.brand, model:addCtx.model, name,
-    sizes:    hasSizes?(document.getElementById('f-sizes')?.value||''):'',
+    sizes,
     buyPrice: document.getElementById('f-buy-price')?.value||'',
     price:    document.getElementById('f-price').value||'',
     publish:  document.getElementById('f-publish')?.checked||false,
@@ -536,10 +542,12 @@ window.openAddPart = function(sid,brand,model){
   const hasSizes=sec?.hasSizes||false;
   document.getElementById('add-title').textContent='Nouvelle pièce';
   document.getElementById('add-ctx').textContent=`${sec.icon} ${sec.label} · ${brand} · ${model}`;
-  ['f-name','f-price','f-link','f-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['f-name','f-link','f-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ['f-sizes','f-buy-price'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const fp=document.getElementById('f-publish'); if(fp) fp.checked=false;
   document.getElementById('f-stock').value='stock';
+  // Prix auto 189,90€ pour montres complètes
+  document.getElementById('f-price').value = isComplete ? '189.90' : '';
   const showResale=sid==='complete'||sid==='accessoire';
   document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
   document.getElementById('buy-price-section').style.display='block';
@@ -1180,7 +1188,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 
       <!-- Tailles (bracelets + montres complètes) -->
       <div id="sizes-section" style="display:none">
-        <div class="fg"><label>Tailles disponibles</label><input type="text" id="f-sizes" placeholder="36mm, 39mm, 41mm"></div>
+        <div class="fg"><label>Tailles disponibles <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(ex: 36, 39, 41 — le "mm" est ajouté automatiquement)</span></label><input type="text" id="f-sizes" placeholder="36, 39, 41"></div>
       </div>
 
       <!-- Prix d'achat PERSONNEL (toutes sections) -->
