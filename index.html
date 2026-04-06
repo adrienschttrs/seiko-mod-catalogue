@@ -175,7 +175,7 @@ window.calcPrice = function() {
   document.getElementById('calc-marge-pct').textContent=pct+'%';
   document.getElementById('calc-result').textContent=prix.toFixed(2)+'€';
   document.getElementById('calc-marge-val').textContent=marge.toFixed(1)+'x';
-  if(achat>0) document.getElementById('f-price').value=prix.toFixed(2);
+  // ⚠️ Ne touche JAMAIS au prix client automatiquement — uniquement via "Appliquer →"
 };
 
 // Reverse calc: when user manually types a price, update the margin slider
