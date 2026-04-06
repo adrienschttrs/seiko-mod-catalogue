@@ -560,6 +560,7 @@ window.openAddPart = function(sid,brand,model){
   document.getElementById('buy-price-section').style.display='block';
   document.getElementById('price-resale-section').style.display=showResale?'block':'none';
   document.getElementById('calc-section').style.display=isComplete?'block':'none';
+  document.getElementById('model-tag-section').style.display=isComplete?'block':'none';
   if(isComplete){
     // Reset valeurs par défaut
     const si=document.getElementById('calc-ship-in'); if(si) si.value='12.5';
@@ -600,6 +601,7 @@ window.openEditPart = function(id){
   document.getElementById('buy-price-section').style.display='block';
   document.getElementById('price-resale-section').style.display=showResaleEdit?'block':'none';
   document.getElementById('calc-section').style.display=isComplete?'block':'none';
+  document.getElementById('model-tag-section').style.display=isComplete?'block':'none';
   if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
   else resetImg();
   openModal('add-modal');
@@ -1256,21 +1258,23 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 
       <div class="fg"><label>Lien fournisseur 1</label><input type="url" id="f-link" placeholder="https://…"></div>
       <div class="fg"><label>Lien fournisseur 2 <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(2ème taille / variante)</span></label><input type="url" id="f-link2" placeholder="https://…"></div>
-      <div class="fg"><label>Tag modèle <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(pour le filtre sur Adri Mods)</span></label>
-        <select id="f-model-tag">
-          <option value="">— Aucun tag —</option>
-          <option>GMT-Master</option>
-          <option>Datejust</option>
-          <option>Submariner</option>
-          <option>Explorer</option>
-          <option>Daytona</option>
-          <option>Day-Date</option>
-          <option>Santos</option>
-          <option>Nautilus</option>
-          <option>Aquanaut</option>
-          <option>Royal Oak</option>
-          <option>PRX</option>
-        </select>
+      <div id="model-tag-section" style="display:none">
+        <div class="fg"><label>Tag modèle <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(pour le filtre sur Adri Mods)</span></label>
+          <select id="f-model-tag">
+            <option value="">— Aucun tag —</option>
+            <option>GMT-Master</option>
+            <option>Datejust</option>
+            <option>Submariner</option>
+            <option>Explorer</option>
+            <option>Daytona</option>
+            <option>Day-Date</option>
+            <option>Santos</option>
+            <option>Nautilus</option>
+            <option>Aquanaut</option>
+            <option>Royal Oak</option>
+            <option>PRX</option>
+          </select>
+        </div>
       </div>
       <div class="fg"><label>Notes</label><textarea id="f-notes" placeholder="Coloris, état, détails…"></textarea></div>
 
