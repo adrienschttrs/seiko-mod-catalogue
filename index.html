@@ -355,9 +355,45 @@ async function loadSectionLabels(){
         const data=d.data();
         Object.keys(data).forEach(sid=>{const sec=DEFS.find(s=>s.id===sid);if(sec)sec.label=data[sid];});
       }
+      if(d.id==='modelTags'){
+        window._modelTags = d.data().tags||[];
+      }
     });
-  }catch(e){}
+    if(!window._modelTags) window._modelTags = ['GMT-Master','Datejust','Submariner','Explorer','Daytona','Day-Date','Santos','Nautilus','Aquanaut','Royal Oak','PRX'];
+  }catch(e){
+    window._modelTags = ['GMT-Master','Datejust','Submariner','Explorer','Daytona','Day-Date','Santos','Nautilus','Aquanaut','Royal Oak','PRX'];
+  }
+  // Met à jour le select f-model-tag avec les tags chargés
+  renderModelTagSelect();
 }
+
+function renderModelTagSelect(){
+  const sel=document.getElementById('f-model-tag'); if(!sel) return;
+  const current=sel.value;
+  sel.innerHTML='<option value="">— Aucun tag —</option>'
+    +(window._modelTags||[]).map(t=>`<option${current===t?' selected':''}>${t}</option>`).join('');
+}
+
+window.addModelTag = async function(){
+  const inp=document.getElementById('new-tag-inp');
+  const val=inp.value.trim(); if(!val) return;
+  if((window._modelTags||[]).includes(val)){toast('Tag déjà existant',true);return;}
+  window._modelTags = [...(window._modelTags||[]), val];
+  await setDoc(doc(db,'settings','modelTags'),{tags:window._modelTags});
+  inp.value='';
+  renderModelTagSelect();
+  renderSettings();
+  toast(`Tag "${val}" ajouté ✓`);
+};
+
+window.deleteModelTag = async function(tag){
+  if(!confirm(`Supprimer le tag "${tag}" ?`)) return;
+  window._modelTags = (window._modelTags||[]).filter(t=>t!==tag);
+  await setDoc(doc(db,'settings','modelTags'),{tags:window._modelTags});
+  renderModelTagSelect();
+  renderSettings();
+  toast(`Tag "${tag}" supprimé`);
+};
 
 // ─── IMAGE ────────────────────────────────────────────────────────────────────
 window.handleImg = async function(input) {
@@ -551,6 +587,26 @@ function renderSettings(){
   let html=`<div class="settings-page">
     <h2 class="settings-title">⚙️ Paramètres — Renommer tout</h2>
     <p class="settings-sub">Renommez les sections, marques et modèles. Les pièces existantes sont automatiquement mises à jour.</p>
+
+    <!-- Tags modèles -->
+    <div class="settings-tags-section">
+      <div class="settings-tags-header">
+        <span style="font-size:16px">🏷️</span>
+        <span class="settings-sec-name">Tags modèles — Adri Mods</span>
+      </div>
+      <p style="font-size:12px;color:var(--text3);margin:8px 14px 12px">Ces tags apparaissent comme filtres sur le site client. Ajoute ou supprime selon tes besoins.</p>
+      <div class="settings-tags-list">
+        ${(window._modelTags||[]).map(t=>`
+          <div class="settings-tag-chip">
+            <span>${t}</span>
+            <button onclick="deleteModelTag('${esc(t)}')" title="Supprimer">✕</button>
+          </div>`).join('')}
+      </div>
+      <div class="settings-add-tag">
+        <input type="text" id="new-tag-inp" placeholder="Nouveau tag…" class="search-inp" style="width:200px" onkeydown="if(event.key==='Enter')addModelTag()">
+        <button class="btn-gold sm" onclick="addModelTag()">+ Ajouter</button>
+      </div>
+    </div>
     <div class="settings-sections-grid">`;
 
   DEFS.forEach(sec=>{
@@ -1121,7 +1177,14 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .calc-apply-btn{padding:6px 12px;border:1px solid var(--gb);border-radius:var(--r-sm);background:var(--gd);color:var(--gold2);font-family:'Inter',sans-serif;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all .14s}
 .calc-apply-btn:hover{background:rgba(176,184,200,.18)}
 
-/* ── VARIANTS ── */
+/* ── SETTINGS TAGS ── */
+.settings-tags-section{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);margin-bottom:20px;overflow:hidden}
+.settings-tags-header{display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--bg3);border-bottom:1px solid var(--line)}
+.settings-tags-list{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px}
+.settings-tag-chip{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 12px;background:var(--bg3);border:1px solid var(--gb);border-radius:20px;font-size:12px;color:var(--gold2)}
+.settings-tag-chip button{background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0;line-height:1;transition:color .14s}
+.settings-tag-chip button:hover{color:var(--red-c)}
+.settings-add-tag{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
 .variant-row{margin-bottom:8px}
 .variant-row-inner{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
 .variant-name,.variant-link{padding:8px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-family:'Inter',sans-serif;font-size:12px;outline:none;width:100%;transition:border-color .14s}
@@ -1344,17 +1407,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
         <div class="fg"><label>Tag modèle <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(pour le filtre sur Adri Mods)</span></label>
           <select id="f-model-tag">
             <option value="">— Aucun tag —</option>
-            <option>GMT-Master</option>
-            <option>Datejust</option>
-            <option>Submariner</option>
-            <option>Explorer</option>
-            <option>Daytona</option>
-            <option>Day-Date</option>
-            <option>Santos</option>
-            <option>Nautilus</option>
-            <option>Aquanaut</option>
-            <option>Royal Oak</option>
-            <option>PRX</option>
           </select>
         </div>
       </div>
