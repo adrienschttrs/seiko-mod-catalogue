@@ -272,8 +272,15 @@ window.deleteModel = async function(sid,brand,model) {
   if(!confirm(`Supprimer "${model}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
   for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model)) await deleteDoc(doc(db,'parts',p.id));
   const snap=await getDocs(collection(db,'customBrands'));
-  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand&&dat.models?.includes(model)){const nm=dat.models.filter(m=>m!==model);nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));}}
+  let isCustom=false;
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand&&dat.models?.includes(model)){isCustom=true;const nm=dat.models.filter(m=>m!==model);nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));}}
   const b=DEFS.find(s=>s.id===sid)?.brands.find(x=>x.name===brand);
+  // If it's a hardcoded model, save deletion to Firebase
+  if(!isCustom && b?.models.includes(model)){
+    const delSnap=await getDocs(collection(db,'settings'));
+    const existing=delSnap.docs.find(d=>d.id==='deletedModels')?.data().list||[];
+    await setDoc(doc(db,'settings','deletedModels'),{list:[...existing,{sid,brand,model}]});
+  }
   if(b) b.models=b.models.filter(m=>m!==model);
   if(activeModel===model) activeModel=null;
   toast(`"${model}" supprimé`);
@@ -285,8 +292,16 @@ window.deleteBrand = async function(sid,brand) {
   if(!confirm(`Supprimer "${brand}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
   for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand)) await deleteDoc(doc(db,'parts',p.id));
   const snap=await getDocs(collection(db,'customBrands'));
-  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand)await deleteDoc(doc(db,'customBrands',d.id));}
-  const sec=DEFS.find(s=>s.id===sid); if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
+  let isCustom=false;
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand){isCustom=true;await deleteDoc(doc(db,'customBrands',d.id));}}
+  const sec=DEFS.find(s=>s.id===sid);
+  // If it's a hardcoded brand, save deletion to Firebase
+  if(!isCustom && sec?.brands.find(b=>b.name===brand)){
+    const delSnap=await getDocs(collection(db,'settings'));
+    const existing=delSnap.docs.find(d=>d.id==='deletedBrands')?.data().list||[];
+    await setDoc(doc(db,'settings','deletedBrands'),{list:[...existing,{sid,brand}]});
+  }
+  if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
   if(activeBrand===brand){activeBrand=null;activeModel=null;}
   toast(`"${brand}" supprimée`);
   if(activeView==='settings') renderSettings(); else render();
@@ -361,12 +376,27 @@ async function loadSectionLabels(){
       if(d.id==='modelTags'){
         window._modelTags = d.data().tags||[];
       }
+      if(d.id==='deletedBrands'){
+        // Restore deleted hardcoded brands
+        const deleted = d.data().list||[];
+        deleted.forEach(({sid,brand})=>{
+          const sec=DEFS.find(s=>s.id===sid);
+          if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
+        });
+      }
+      if(d.id==='deletedModels'){
+        const deleted = d.data().list||[];
+        deleted.forEach(({sid,brand,model})=>{
+          const sec=DEFS.find(s=>s.id===sid);
+          const b=sec?.brands.find(x=>x.name===brand);
+          if(b) b.models=b.models.filter(m=>m!==model);
+        });
+      }
     });
     if(!window._modelTags) window._modelTags = ['GMT-Master','Datejust','Submariner','Explorer','Daytona','Day-Date','Santos','Nautilus','Aquanaut','Royal Oak','PRX'];
   }catch(e){
     window._modelTags = ['GMT-Master','Datejust','Submariner','Explorer','Daytona','Day-Date','Santos','Nautilus','Aquanaut','Royal Oak','PRX'];
   }
-  // Met à jour le select f-model-tag avec les tags chargés
   renderModelTagSelect();
 }
 
@@ -463,6 +493,14 @@ function renderHeader(){
 // ─── BRAND TILES ──────────────────────────────────────────────────────────────
 function renderBrandList(){
   const sec=DEFS.find(s=>s.id===activeSection);
+  const defaultSec = DEFAULT_DEFS.find(s=>s.id===activeSection);
+  const defaultBrandNames = new Set((defaultSec?.brands||[]).map(b=>b.name));
+  // Garder les marques custom OU celles avec des pièces
+  const filteredBrands = sec.brands.filter(brand => {
+    const isCustom = !defaultBrandNames.has(brand.name);
+    const hasParts = parts.some(p=>p.sid===sec.id&&p.brand===brand.name);
+    return isCustom || hasParts;
+  });
   document.getElementById('main').innerHTML=`
     <div class="level-header">
       <div><h2 class="level-title">${sec.icon} ${sec.label}</h2><p class="level-sub">${sec.desc}</p></div>
@@ -471,7 +509,7 @@ function renderBrandList(){
         <button class="btn-gold" onclick="openAddBrand('${sec.id}')">+ Marque</button>
       </div>
     </div>
-    <div class="tile-grid">${sec.brands.map(brand=>{
+    <div class="tile-grid">${filteredBrands.map(brand=>{
       const cnt=parts.filter(p=>p.sid===sec.id&&p.brand===brand.name).length;
       const cover=parts.find(p=>p.sid===sec.id&&p.brand===brand.name&&p.img);
       return `<div class="brand-tile" onclick="setBrand('${esc(brand.name)}')">
@@ -483,23 +521,34 @@ function renderBrandList(){
           <button class="tile-act-btn del" onclick="deleteBrand('${sec.id}','${esc(brand.name)}')" title="Supprimer">✕</button>
         </div>
       </div>`;
-    }).join('')}</div>`;
+    }).join('')}
+    ${filteredBrands.length===0?`<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Aucune pièce dans cette section.<br>Cliquez sur "+ Marque" pour commencer.</div>`:''}
+    </div>`;
 }
 
-// ─── MODEL TILES ──────────────────────────────────────────────────────────────
 function renderModelList(){
   const sec=DEFS.find(s=>s.id===activeSection);
   const brand=sec.brands.find(b=>b.name===activeBrand);
   if(!brand){activeBrand=null;render();return;}
+  // Pour les sections sans hasSizes (accessoires etc.), ne montrer que les modèles qui ont des pièces OU qui sont custom
+  const customBrandModels = new Set();
+  // On garde tous les modèles qui ont au moins une pièce, ou qui n'existent pas dans DEFAULT_DEFS (= custom)
+  const defaultBrand = DEFAULT_DEFS.find(s=>s.id===activeSection)?.brands.find(b=>b.name===activeBrand);
+  const defaultModels = new Set(defaultBrand?.models||[]);
+  const filteredModels = brand.models.filter(model => {
+    const hasParts = parts.some(p=>p.sid===sec.id&&p.brand===activeBrand&&p.model===model);
+    const isCustom = !defaultModels.has(model);
+    return hasParts || isCustom;
+  });
   document.getElementById('main').innerHTML=`
     <div class="level-header">
-      <div><h2 class="level-title">${activeBrand}</h2><p class="level-sub">${sec.label} · ${brand.models.length} modèle${brand.models.length>1?'s':''}</p></div>
+      <div><h2 class="level-title">${activeBrand}</h2><p class="level-sub">${sec.label} · ${filteredModels.length} modèle${filteredModels.length!==1?'s':''}</p></div>
       <div style="display:flex;gap:8px">
         <button class="btn-outline sm" onclick="openRenameItem('brand','${sec.id}','${esc(activeBrand)}')">✎ Renommer</button>
         <button class="btn-gold" onclick="openAddModel('${sec.id}','${esc(activeBrand)}')">+ Modèle</button>
       </div>
     </div>
-    <div class="tile-grid">${brand.models.map(model=>{
+    <div class="tile-grid">${filteredModels.map(model=>{
       const mParts=parts.filter(p=>p.sid===sec.id&&p.brand===activeBrand&&p.model===model);
       const cover=mParts.find(p=>p.img);
       return `<div class="brand-tile" onclick="setModel('${esc(model)}')">
@@ -511,7 +560,9 @@ function renderModelList(){
           <button class="tile-act-btn del" onclick="deleteModel('${sec.id}','${esc(activeBrand)}','${esc(model)}')" title="Supprimer">✕</button>
         </div>
       </div>`;
-    }).join('')}</div>`;
+    }).join('')}
+    ${filteredModels.length===0?`<div class="no-parts-msg" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Aucune pièce dans cette catégorie.<br>Cliquez sur "+ Modèle" pour commencer.</div>`:''}
+    </div>`;
 }
 
 // ─── PART GRID ────────────────────────────────────────────────────────────────
