@@ -146,6 +146,7 @@ window.savePart = async function() {
     modelTag: document.getElementById('f-model-tag')?.value||'',
     notes:    document.getElementById('f-notes').value||'',
     stock:    document.getElementById('f-stock').value||'stock',
+    lastPiece: document.getElementById('f-last-piece')?.checked||false,
     img:currentImgUrl||'', ts:Date.now()
   };
   try{
@@ -657,6 +658,8 @@ window.openAddPart = function(sid,brand,model){
   const fmtag=document.getElementById('f-model-tag'); if(fmtag) fmtag.value='';;
   const fp=document.getElementById('f-publish'); if(fp) fp.checked=false;
   document.getElementById('f-stock').value='stock';
+  const flp=document.getElementById('f-last-piece'); if(flp) flp.checked=false;
+  document.getElementById('last-piece-section').style.display=isComplete?'block':'none';
   // Prix auto 189,90€ pour montres complètes
   document.getElementById('f-price').value = isComplete ? '189.90' : '';
   const showResale=sid==='complete'||sid==='accessoire';
@@ -703,6 +706,8 @@ window.openEditPart = function(id){
   const fmtag=document.getElementById('f-model-tag'); if(fmtag) fmtag.value=p.modelTag||'';
   document.getElementById('f-notes').value=p.notes||'';
   document.getElementById('f-stock').value=p.stock||'stock';
+  const flp=document.getElementById('f-last-piece'); if(flp) flp.checked=p.lastPiece||false;
+  document.getElementById('last-piece-section').style.display=isComplete?'block':'none';
   const showResaleEdit=p.sid==='complete'||p.sid==='accessoire';
   document.getElementById('sizes-section').style.display=hasSizes?'block':'none';
   document.getElementById('buy-price-section').style.display='block';
@@ -1389,6 +1394,12 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
           <option value="rupture">Rupture</option>
           <option value="vendu">Vendu</option>
         </select>
+      </div>
+      <div class="fg" id="last-piece-section" style="display:none">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px">
+          <input type="checkbox" id="f-last-piece" style="width:16px;height:16px;accent-color:var(--red-c)">
+          <span>🔴 Dernière pièce — badge rouge affiché sur Adri Mods</span>
+        </label>
       </div>
 
       <!-- Variantes (montres complètes) -->
