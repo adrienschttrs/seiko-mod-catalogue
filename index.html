@@ -321,7 +321,159 @@ window.deleteBrand = async function(sid,brand) {
   if(activeView==='settings') renderSettings(); else render();
 };
 
-// ─── ORDERS ───────────────────────────────────────────────────────────────────
+// ─── FINANCES ─────────────────────────────────────────────────────────────────
+async function renderFinances() {
+  const main = document.getElementById('main');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">Chargement…</div>';
+
+  try {
+    // Load orders and parts
+    const [ordersSnap, partsSnap] = await Promise.all([
+      getDocs(query(collection(db,'orders'), orderBy('ts','desc'))),
+      getDocs(collection(db,'parts')),
+    ]);
+    const orders = ordersSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const allParts = partsSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    // ── Calculs ──
+    const delivered = orders.filter(o=>o.status==='delivered'||o.status==='shipped'||o.status==='confirmed');
+    const revenue = delivered.reduce((a,o)=>a+(parseFloat(o.total)||0),0);
+    const pending = orders.filter(o=>o.status==='pending').reduce((a,o)=>a+(parseFloat(o.total)||0),0);
+
+    // Stock cost = sum of buyPrice on all parts in stock
+    const stockCost = allParts.filter(p=>p.stock!=='vendu').reduce((a,p)=>a+(parseFloat(p.buyPrice)||0),0);
+    const totalBuyAll = allParts.reduce((a,p)=>a+(parseFloat(p.buyPrice)||0),0);
+
+    // Revenue by month (last 6 months)
+    const now = new Date();
+    const months = Array.from({length:6},(_,i)=>{
+      const d = new Date(now.getFullYear(), now.getMonth()-5+i, 1);
+      return { label: d.toLocaleDateString('fr-FR',{month:'short',year:'2-digit'}), y:d.getFullYear(), m:d.getMonth(), val:0 };
+    });
+    delivered.forEach(o=>{
+      if(!o.ts) return;
+      const d = new Date(o.ts);
+      const bucket = months.find(m=>m.y===d.getFullYear()&&m.m===d.getMonth());
+      if(bucket) bucket.val += parseFloat(o.total)||0;
+    });
+    const maxBar = Math.max(...months.map(m=>m.val),1);
+
+    // Top products sold
+    const soldProducts = {};
+    orders.forEach(o=>(o.items||[]).forEach(item=>{
+      const key = item.split('—')[0].trim();
+      soldProducts[key]=(soldProducts[key]||0)+1;
+    }));
+    const topProducts = Object.entries(soldProducts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+    // Order status breakdown
+    const statusCount = { pending:0, confirmed:0, shipped:0, delivered:0 };
+    orders.forEach(o=>{ if(statusCount[o.status]!==undefined) statusCount[o.status]++; });
+
+    main.innerHTML = `
+      <div class="fin-header">
+        <div class="level-title">Finances</div>
+        <div class="fin-period">Toutes périodes</div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="fin-kpis">
+        <div class="fin-kpi">
+          <div class="fin-kpi-lbl">Chiffre d'affaires</div>
+          <div class="fin-kpi-val g">${revenue.toFixed(2)}€</div>
+          <div class="fin-kpi-sub">${delivered.length} commande${delivered.length!==1?'s':''} livrées/confirmées</div>
+        </div>
+        <div class="fin-kpi">
+          <div class="fin-kpi-lbl">En attente</div>
+          <div class="fin-kpi-val amber">${pending.toFixed(2)}€</div>
+          <div class="fin-kpi-sub">${orders.filter(o=>o.status==='pending').length} commande${orders.filter(o=>o.status==='pending').length!==1?'s':''} en attente</div>
+        </div>
+        <div class="fin-kpi">
+          <div class="fin-kpi-lbl">Valeur stock</div>
+          <div class="fin-kpi-val">${stockCost.toFixed(2)}€</div>
+          <div class="fin-kpi-sub">${allParts.filter(p=>p.stock!=='vendu').length} pièces en stock</div>
+        </div>
+        <div class="fin-kpi">
+          <div class="fin-kpi-lbl">Total investi</div>
+          <div class="fin-kpi-val red">${totalBuyAll.toFixed(2)}€</div>
+          <div class="fin-kpi-sub">Toutes pièces confondues</div>
+        </div>
+      </div>
+
+      <div class="fin-grid">
+        <!-- Revenus par mois -->
+        <div class="fin-card fin-card-wide">
+          <div class="fin-card-title">Revenus des 6 derniers mois</div>
+          <div class="fin-chart">
+            ${months.map(m=>`
+              <div class="fin-bar-wrap">
+                <div class="fin-bar-val">${m.val>0?m.val.toFixed(0)+'€':''}</div>
+                <div class="fin-bar" style="height:${Math.round((m.val/maxBar)*100)}%"></div>
+                <div class="fin-bar-lbl">${m.label}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <!-- Statut commandes -->
+        <div class="fin-card">
+          <div class="fin-card-title">Statut des commandes</div>
+          <div class="fin-status-list">
+            ${[
+              {id:'pending',label:'En attente',color:'#b07a20'},
+              {id:'confirmed',label:'Confirmées',color:'#2a7a4a'},
+              {id:'shipped',label:'Expédiées',color:'#3a66aa'},
+              {id:'delivered',label:'Livrées',color:'#555'},
+            ].map(s=>`<div class="fin-status-row">
+              <span class="fin-status-dot" style="background:${s.color}"></span>
+              <span class="fin-status-lbl">${s.label}</span>
+              <span class="fin-status-val">${statusCount[s.id]}</span>
+            </div>`).join('')}
+            <div class="fin-status-row" style="border-top:1px solid var(--line);padding-top:8px;margin-top:4px">
+              <span style="font-size:11px;color:var(--text3)">Total</span>
+              <span></span>
+              <span class="fin-status-val">${orders.length}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top produits -->
+        <div class="fin-card">
+          <div class="fin-card-title">Articles les plus commandés</div>
+          ${topProducts.length ? `<div class="fin-top-list">
+            ${topProducts.map(([name,count],i)=>`
+              <div class="fin-top-row">
+                <span class="fin-top-rank">${i+1}</span>
+                <span class="fin-top-name">${name}</span>
+                <span class="fin-top-count">${count}x</span>
+              </div>`).join('')}
+          </div>` : '<div style="font-size:12px;color:var(--text3);padding:12px 0">Aucune commande enregistrée</div>'}
+        </div>
+
+        <!-- Dernières commandes -->
+        <div class="fin-card fin-card-wide">
+          <div class="fin-card-title">Dernières commandes</div>
+          <table class="fin-table">
+            <thead><tr><th>Client</th><th>Articles</th><th>Total</th><th>Statut</th><th>Date</th></tr></thead>
+            <tbody>
+              ${orders.slice(0,10).map(o=>{
+                const status = ORDER_STATUSES.find(s=>s.id===(o.status||'pending'))||ORDER_STATUSES[0];
+                return `<tr>
+                  <td><div class="fin-client-name">${o.clientName||'—'}</div><div class="fin-client-email">${o.clientEmail||''}</div></td>
+                  <td class="fin-items-cell">${(o.items||[]).slice(0,2).join(', ')}${(o.items||[]).length>2?'…':''}</td>
+                  <td class="fin-total-cell">${o.total||'—'}</td>
+                  <td><span class="order-status-badge" style="background:${status.color}20;color:${status.color}">${status.label}</span></td>
+                  <td class="fin-date-cell">${o.ts?new Date(o.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'—'}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+          ${orders.length===0?'<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px">Aucune commande</div>':''}
+        </div>
+      </div>`;
+  } catch(e) {
+    main.innerHTML = `<div style="color:var(--red-c);padding:20px">Erreur : ${e.message}</div>`;
+  }
+}
 const ORDER_STATUSES = [
   { id:'pending',   label:'En attente',  color:'#b07a20' },
   { id:'confirmed', label:'Confirmée',   color:'#2a7a4a' },
@@ -407,7 +559,7 @@ window.saveEditOrder = async function(id) {
     clientName:     name,
     clientEmail:    email.toLowerCase(),
     items,
-    total:          document.getElementById('no-total').value.trim(),
+    total:          document.getElementById('no-total').value.trim().replace(/€$/,'')+'€',
     trackingNumber: document.getElementById('no-tracking').value.trim(),
     status:         document.getElementById('no-status').value,
     statusDate:     Date.now(),
@@ -442,7 +594,7 @@ window.saveNewOrder = async function() {
     clientName:  name,
     clientEmail: email.toLowerCase(),
     items,
-    total:        document.getElementById('no-total').value.trim(),
+    total:        document.getElementById('no-total').value.trim().replace(/€$/,'')+'€',
     trackingNumber: document.getElementById('no-tracking').value.trim(),
     status:       document.getElementById('no-status').value,
     ts:           Date.now(),
@@ -663,6 +815,7 @@ window.setView = v=>{
   if(v==='catalogue') render();
   if(v==='settings') renderSettings();
   if(v==='orders') renderOrders();
+  if(v==='finances') renderFinances();
   document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
 }
 
@@ -1347,6 +1500,45 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .empty-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--text);margin-bottom:8px}
 .empty-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
 
+/* ── FINANCES ── */
+.fin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.fin-period{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);letter-spacing:.08em}
+.fin-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.fin-kpi{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.fin-kpi-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}
+.fin-kpi-val{font-family:'Playfair Display',serif;font-size:22px;font-weight:500;margin-bottom:4px}
+.fin-kpi-val.g{color:var(--gold2)}
+.fin-kpi-val.amber{color:#b07a20}
+.fin-kpi-val.red{color:var(--red-c)}
+.fin-kpi-sub{font-size:10px;color:var(--text3)}
+.fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fin-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.fin-card-wide{grid-column:1/-1}
+.fin-card-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px}
+.fin-chart{display:flex;align-items:flex-end;gap:8px;height:120px}
+.fin-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.fin-bar-val{font-size:9px;color:var(--gold2);font-family:'JetBrains Mono',monospace;min-height:12px}
+.fin-bar{width:100%;background:var(--gold2);border-radius:3px 3px 0 0;min-height:2px;transition:height .3s;opacity:.8}
+.fin-bar-lbl{font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.fin-status-list{display:flex;flex-direction:column;gap:8px}
+.fin-status-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.fin-status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.fin-status-lbl{flex:1;color:var(--text2)}
+.fin-status-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--text)}
+.fin-top-list{display:flex;flex-direction:column;gap:8px}
+.fin-top-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.fin-top-rank{width:18px;height:18px;border-radius:50%;background:var(--bg3);border:1px solid var(--line2);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;color:var(--text3);flex-shrink:0}
+.fin-top-name{flex:1;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-top-count{font-family:'JetBrains Mono',monospace;color:var(--gold2);font-weight:600}
+.fin-table{width:100%;border-collapse:collapse;font-size:11px}
+.fin-table th{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:0 0 8px;text-align:left;border-bottom:1px solid var(--line)}
+.fin-table td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.fin-table tr:last-child td{border-bottom:none}
+.fin-client-name{font-weight:600;color:var(--text);font-size:12px}
+.fin-client-email{font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace}
+.fin-items-cell{color:var(--text2);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fin-total-cell{font-family:'JetBrains Mono',monospace;color:var(--gold2);font-weight:600;white-space:nowrap}
+.fin-date-cell{color:var(--text3);white-space:nowrap}
 /* ── ORDERS ── */
 .orders-list{display:flex;flex-direction:column;gap:12px}
 .order-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px;transition:border-color .14s}
@@ -1635,6 +1827,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     <div class="hdr-btns">
       <button class="view-btn active" data-view="catalogue" onclick="setView('catalogue')">📦 Catalogue</button>
       <button class="view-btn" data-view="orders" onclick="setView('orders')">🛒 Commandes</button>
+      <button class="view-btn" data-view="finances" onclick="setView('finances')">💰 Finances</button>
       <button class="view-btn" data-view="settings" onclick="setView('settings')">⚙️ Paramètres</button>
       <button class="btn-sb" id="theme-btn" onclick="toggleTheme()" title="Mode clair/sombre">☀</button>
       <button class="btn-sb" onclick="exportJSON()">↓ Export</button>
