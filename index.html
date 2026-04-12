@@ -163,8 +163,20 @@ window.savePart = async function() {
 window.deletePart = async function(id) {
   if(!confirm('Supprimer cette pièce ?')) return;
   await deleteDoc(doc(db,'parts',id));
-  closeModal('detail-modal'); toast('Pièce supprimée');
+  closeModal('detail-modal');
+  toast('Pièce supprimée');
 };
+
+// Depublish all parts whose brand/model no longer exists in DEFS
+async function depublishOrphanParts() {
+  const validCombos = new Set();
+  DEFS.forEach(sec => sec.brands.forEach(b => b.models.forEach(m => validCombos.add(`${sec.id}|${b.name}|${m}`))));
+  const orphans = parts.filter(p => p.publish && !validCombos.has(`${p.sid}|${p.brand}|${p.model}`));
+  for(const p of orphans) {
+    await updateDoc(doc(db,'parts',p.id), {publish: false});
+    toast(`"${p.name}" dépublié (modèle supprimé)`);
+  }
+}
 
 window.duplicatePart = async function(id) {
   const p=parts.find(x=>x.id===id); if(!p) return;
@@ -271,19 +283,19 @@ window.deleteModel = async function(sid,brand,model) {
   const cnt=parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model).length;
   if(!confirm(`Supprimer "${model}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
   for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand&&p.model===model)) await deleteDoc(doc(db,'parts',p.id));
+  // Remove from customBrands if present
   const snap=await getDocs(collection(db,'customBrands'));
-  let isCustom=false;
-  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand&&dat.models?.includes(model)){isCustom=true;const nm=dat.models.filter(m=>m!==model);nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));}}
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand&&dat.models?.includes(model)){const nm=dat.models.filter(m=>m!==model);nm.length?await updateDoc(doc(db,'customBrands',d.id),{models:nm}):await deleteDoc(doc(db,'customBrands',d.id));}}
+  // Always save to deletedModels (handles hardcoded models)
+  const delSnap=await getDocs(query(collection(db,'settings')));
+  const existing=(delSnap.docs.find(d=>d.id==='deletedModels')?.data().list||[]).filter(x=>!(x.sid===sid&&x.brand===brand&&x.model===model));
+  await setDoc(doc(db,'settings','deletedModels'),{list:[...existing,{sid,brand,model}]});
+  // Update in-memory DEFS
   const b=DEFS.find(s=>s.id===sid)?.brands.find(x=>x.name===brand);
-  // If it's a hardcoded model, save deletion to Firebase
-  if(!isCustom && b?.models.includes(model)){
-    const delSnap=await getDocs(collection(db,'settings'));
-    const existing=delSnap.docs.find(d=>d.id==='deletedModels')?.data().list||[];
-    await setDoc(doc(db,'settings','deletedModels'),{list:[...existing,{sid,brand,model}]});
-  }
   if(b) b.models=b.models.filter(m=>m!==model);
   if(activeModel===model) activeModel=null;
-  toast(`"${model}" supprimé`);
+  await depublishOrphanParts();
+  toast(`"${model}" supprimé ✓`);
   if(activeView==='settings') renderSettings(); else render();
 };
 
@@ -291,19 +303,19 @@ window.deleteBrand = async function(sid,brand) {
   const cnt=parts.filter(p=>p.sid===sid&&p.brand===brand).length;
   if(!confirm(`Supprimer "${brand}"${cnt?` + ${cnt} pièce(s)`:''}?`)) return;
   for(const p of parts.filter(p=>p.sid===sid&&p.brand===brand)) await deleteDoc(doc(db,'parts',p.id));
+  // Remove from customBrands if present
   const snap=await getDocs(collection(db,'customBrands'));
-  let isCustom=false;
-  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand){isCustom=true;await deleteDoc(doc(db,'customBrands',d.id));}}
+  for(const d of snap.docs){const dat=d.data();if(dat.sid===sid&&dat.brand===brand)await deleteDoc(doc(db,'customBrands',d.id));}
+  // Always save to deletedBrands (handles hardcoded brands)
+  const delSnap=await getDocs(query(collection(db,'settings')));
+  const existing=(delSnap.docs.find(d=>d.id==='deletedBrands')?.data().list||[]).filter(x=>!(x.sid===sid&&x.brand===brand));
+  await setDoc(doc(db,'settings','deletedBrands'),{list:[...existing,{sid,brand}]});
+  // Update in-memory DEFS
   const sec=DEFS.find(s=>s.id===sid);
-  // If it's a hardcoded brand, save deletion to Firebase
-  if(!isCustom && sec?.brands.find(b=>b.name===brand)){
-    const delSnap=await getDocs(collection(db,'settings'));
-    const existing=delSnap.docs.find(d=>d.id==='deletedBrands')?.data().list||[];
-    await setDoc(doc(db,'settings','deletedBrands'),{list:[...existing,{sid,brand}]});
-  }
   if(sec) sec.brands=sec.brands.filter(b=>b.name!==brand);
   if(activeBrand===brand){activeBrand=null;activeModel=null;}
-  toast(`"${brand}" supprimée`);
+  await depublishOrphanParts();
+  toast(`"${brand}" supprimée ✓`);
   if(activeView==='settings') renderSettings(); else render();
 };
 
@@ -398,6 +410,8 @@ async function loadSectionLabels(){
     window._modelTags = ['GMT-Master','Datejust','Submariner','Explorer','Daytona','Day-Date','Santos','Nautilus','Aquanaut','Royal Oak','PRX'];
   }
   renderModelTagSelect();
+  // Clean up parts whose brand/model was deleted
+  setTimeout(async () => { if(parts.length) await depublishOrphanParts(); }, 2000);
 }
 
 function renderModelTagSelect(){
@@ -997,7 +1011,7 @@ function renderStats(){
 onAuthStateChanged(auth, user => {
   if(user) {
     document.getElementById('login-screen').style.display='none';
-    document.getElementById('app-root').style.display='block';
+    document.getElementById('app-root').style.display='flex';
     loadSectionLabels().then(startListeners);
   } else {
     document.getElementById('login-screen').style.display='flex';
@@ -1381,7 +1395,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 </div>
 
 <!-- APP -->
-<div id="app-root" style="display:none;height:100%;flex-direction:column;flex:1">
+<div id="app-root" style="display:none;flex:1;flex-direction:column;height:100%;overflow:hidden">
 
 <div class="loading-screen" id="loading">
   <div class="loading-logo">Seiko <span>Mod</span></div>
