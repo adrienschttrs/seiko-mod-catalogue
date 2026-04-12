@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Page introuvable — Adri Mods</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231a1714'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23c9a84c' stroke-width='1.5'/><circle cx='16' cy='16' r='2' fill='%23c9a84c'/><line x1='16' y1='8' x2='16' y2='11' stroke='%23c9a84c' stroke-width='1.5' stroke-linecap='round'/><line x1='16' y1='16' x2='20' y2='13' stroke='%23c9a84c' stroke-width='1.5' stroke-linecap='round'/></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--ink:#1a1714;--ink2:#5a5650;--ink3:#9a9690;--bg:#fafaf8;--gold:#c9a84c;--border:#e8e4de;--r:12px}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+  .watch-icon{margin-bottom:32px;opacity:.15}
+  .code{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.2em;color:var(--gold);text-transform:uppercase;margin-bottom:16px}
+  h1{font-family:'Playfair Display',serif;font-size:clamp(28px,6vw,48px);font-weight:500;margin-bottom:16px;line-height:1.2}
+  h1 em{font-style:italic;color:var(--gold)}
+  p{font-size:15px;color:var(--ink2);line-height:1.7;max-width:420px;margin:0 auto 36px}
+  .btns{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .btn-primary{padding:13px 28px;background:var(--ink);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;text-decoration:none;transition:opacity .14s}
+  .btn-primary:hover{opacity:.85}
+  .btn-secondary{padding:13px 28px;background:transparent;color:var(--ink);border:1.5px solid var(--border);border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;font-family:'Inter',sans-serif;text-decoration:none;transition:all .14s}
+  .btn-secondary:hover{border-color:var(--ink)}
+  .footer{position:fixed;bottom:24px;font-size:12px;color:var(--ink3)}
+</style>
+</head>
+<body>
+
+  <!-- Watch SVG illustration -->
+  <div class="watch-icon">
+    <svg width="120" height="120" fill="none" stroke="#1a1714" stroke-width="1.5" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9"/>
+      <polyline points="12 7 12 12 15 15"/>
+      <line x1="12" y1="2" x2="12" y2="4"/>
+      <line x1="12" y1="20" x2="12" y2="22"/>
+      <rect x="9" y="1" width="6" height="2" rx="1"/>
+      <rect x="9" y="21" width="6" height="2" rx="1"/>
+    </svg>
+  </div>
+
+  <div class="code">Erreur 404</div>
+  <h1>Cette page s'est <em>égarée</em></h1>
+  <p>La page que vous cherchez n'existe pas ou a été déplacée. Retournez à l'accueil pour découvrir nos montres.</p>
+
+  <div class="btns">
+    <a href="/" class="btn-primary">Retour à l'accueil</a>
+    <a href="/#shop" class="btn-secondary">Voir la boutique</a>
+  </div>
+
+  <div class="footer">Adri <em style="font-family:'Playfair Display',serif;color:var(--gold);font-style:italic">Mods</em> — Montres Seiko Mod</div>
+
+</body>
+</html>
