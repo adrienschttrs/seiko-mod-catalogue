@@ -373,10 +373,49 @@ function orderCard(o) {
         ${ORDER_STATUSES.map(s=>`<option value="${s.id}"${(o.status||'pending')===s.id?' selected':''}>${s.label}</option>`).join('')}
       </select>
       <input class="order-tracking-inp" placeholder="Numéro de suivi" value="${o.trackingNumber||''}" onblur="updateOrderTracking('${o.id}',this.value)">
+      <button class="btn-outline sm" onclick="openEditOrder('${o.id}')">✏️</button>
       <button class="btn-outline sm red" onclick="deleteOrder('${o.id}')">✕</button>
     </div>
   </div>`;
 }
+
+window.openEditOrder = async function(id) {
+  const snap = await getDocs(collection(db,'orders'));
+  const o = snap.docs.map(d=>({id:d.id,...d.data()})).find(x=>x.id===id);
+  if(!o) return;
+  const html = `<div class="modal-hdr"><h3>Modifier la commande</h3><button class="modal-x" onclick="closeModal('new-order-modal')">✕</button></div>
+  <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+    <div class="fg"><label>Nom du client *</label><input type="text" id="no-name" value="${o.clientName||''}" placeholder="Jean Dupont"></div>
+    <div class="fg"><label>Email du client *</label><input type="email" id="no-email" value="${o.clientEmail||''}" placeholder="jean@exemple.com"></div>
+    <div class="fg"><label>Articles (un par ligne)</label><textarea id="no-items" rows="4">${(o.items||[]).join('\n')}</textarea></div>
+    <div class="fg"><label>Total</label><input type="text" id="no-total" value="${o.total||''}" placeholder="189.90€"></div>
+    <div class="fg"><label>Numéro de suivi</label><input type="text" id="no-tracking" value="${o.trackingNumber||''}" placeholder="BE123456789"></div>
+    <div class="fg"><label>Statut</label><select id="no-status">${ORDER_STATUSES.map(s=>`<option value="${s.id}"${(o.status||'pending')===s.id?' selected':''}>${s.label}</option>`).join('')}</select></div>
+    <button class="btn-gold" onclick="saveEditOrder('${id}')">Enregistrer</button>
+  </div>`;
+  const modal = document.getElementById('new-order-modal');
+  modal.querySelector('.modal-inner').innerHTML = html;
+  openModal('new-order-modal');
+};
+
+window.saveEditOrder = async function(id) {
+  const name  = document.getElementById('no-name').value.trim();
+  const email = document.getElementById('no-email').value.trim();
+  if(!name||!email) { toast('Nom et email obligatoires',true); return; }
+  const items = document.getElementById('no-items').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  await updateDoc(doc(db,'orders',id), {
+    clientName:     name,
+    clientEmail:    email.toLowerCase(),
+    items,
+    total:          document.getElementById('no-total').value.trim(),
+    trackingNumber: document.getElementById('no-tracking').value.trim(),
+    status:         document.getElementById('no-status').value,
+    statusDate:     Date.now(),
+  });
+  closeModal('new-order-modal');
+  toast('Commande modifiée ✓');
+  renderOrders();
+};
 
 window.openNewOrder = function() {
   const html = `<div class="modal-hdr"><h3>Nouvelle commande</h3><button class="modal-x" onclick="closeModal('new-order-modal')">✕</button></div>
