@@ -321,7 +321,117 @@ window.deleteBrand = async function(sid,brand) {
   if(activeView==='settings') renderSettings(); else render();
 };
 
-// ─── CUSTOM BRAND/MODEL ───────────────────────────────────────────────────────
+// ─── ORDERS ───────────────────────────────────────────────────────────────────
+const ORDER_STATUSES = [
+  { id:'pending',   label:'En attente',  color:'#b07a20' },
+  { id:'confirmed', label:'Confirmée',   color:'#2a7a4a' },
+  { id:'shipped',   label:'Expédiée',    color:'#3a66aa' },
+  { id:'delivered', label:'Livrée',      color:'#555'    },
+];
+
+async function renderOrders() {
+  const main = document.getElementById('main');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">Chargement…</div>';
+  try {
+    const snap = await getDocs(query(collection(db,'orders'), orderBy('ts','desc')));
+    const orders = snap.docs.map(d=>({id:d.id,...d.data()}));
+    main.innerHTML = `
+      <div class="level-header">
+        <div><div class="level-title">Commandes</div><div class="level-sub">${orders.length} commande${orders.length!==1?'s':''}</div></div>
+        <button class="btn-gold" onclick="openNewOrder()">+ Nouvelle commande</button>
+      </div>
+      ${orders.length ? `
+      <div class="orders-list">
+        ${orders.map(o=>orderCard(o)).join('')}
+      </div>` : `<div style="text-align:center;padding:60px;color:var(--text3)">
+        <div style="font-size:32px;margin-bottom:12px">🛒</div>
+        <div style="font-size:14px">Aucune commande pour l'instant</div>
+        <div style="font-size:11px;margin-top:6px;color:var(--text4)">Les commandes envoyées via le site apparaîtront ici</div>
+      </div>`}`;
+  } catch(e) { main.innerHTML = `<div style="color:var(--red-c);padding:20px">Erreur : ${e.message}</div>`; }
+}
+
+function orderCard(o) {
+  const status = ORDER_STATUSES.find(s=>s.id===(o.status||'pending')) || ORDER_STATUSES[0];
+  const date = o.ts ? new Date(o.ts).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}) : '—';
+  return `<div class="order-card" id="order-${o.id}">
+    <div class="order-card-top">
+      <div>
+        <div class="order-client">${o.clientName||'Client inconnu'}</div>
+        <div class="order-email">${o.clientEmail||'—'}</div>
+        <div class="order-date">${date}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="order-total">${o.total||'—'}</div>
+        <span class="order-status-badge" style="background:${status.color}20;color:${status.color}">${status.label}</span>
+      </div>
+    </div>
+    ${o.items?.length ? `<div class="order-items">${o.items.map(i=>`<span class="order-item-tag">${i}</span>`).join('')}</div>` : ''}
+    ${o.trackingNumber ? `<div class="order-tracking">📦 Suivi : <strong>${o.trackingNumber}</strong></div>` : ''}
+    <div class="order-actions">
+      <select class="order-status-select" onchange="updateOrderStatus('${o.id}',this.value)">
+        ${ORDER_STATUSES.map(s=>`<option value="${s.id}"${(o.status||'pending')===s.id?' selected':''}>${s.label}</option>`).join('')}
+      </select>
+      <input class="order-tracking-inp" placeholder="Numéro de suivi" value="${o.trackingNumber||''}" onblur="updateOrderTracking('${o.id}',this.value)">
+      <button class="btn-outline sm red" onclick="deleteOrder('${o.id}')">✕</button>
+    </div>
+  </div>`;
+}
+
+window.openNewOrder = function() {
+  const html = `<div class="modal-hdr"><h3>Nouvelle commande</h3><button class="modal-x" onclick="closeModal('new-order-modal')">✕</button></div>
+  <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+    <div class="fg"><label>Nom du client *</label><input type="text" id="no-name" placeholder="Jean Dupont"></div>
+    <div class="fg"><label>Email du client *</label><input type="email" id="no-email" placeholder="jean@exemple.com"></div>
+    <div class="fg"><label>Articles (un par ligne)</label><textarea id="no-items" rows="4" placeholder="GMT Pepsi - Seiko Mod&#10;Boîte de voyage"></textarea></div>
+    <div class="fg"><label>Total</label><input type="text" id="no-total" placeholder="189.90€"></div>
+    <div class="fg"><label>Numéro de suivi</label><input type="text" id="no-tracking" placeholder="BE123456789"></div>
+    <div class="fg"><label>Statut</label><select id="no-status">${ORDER_STATUSES.map(s=>`<option value="${s.id}">${s.label}</option>`).join('')}</select></div>
+    <button class="btn-gold" onclick="saveNewOrder()">Créer la commande</button>
+  </div>`;
+  const modal = document.getElementById('new-order-modal');
+  modal.querySelector('.modal-inner').innerHTML = html;
+  openModal('new-order-modal');
+};
+
+window.saveNewOrder = async function() {
+  const name  = document.getElementById('no-name').value.trim();
+  const email = document.getElementById('no-email').value.trim();
+  if(!name||!email) { toast('Nom et email obligatoires',true); return; }
+  const items = document.getElementById('no-items').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const o = {
+    clientName:  name,
+    clientEmail: email.toLowerCase(),
+    items,
+    total:        document.getElementById('no-total').value.trim(),
+    trackingNumber: document.getElementById('no-tracking').value.trim(),
+    status:       document.getElementById('no-status').value,
+    ts:           Date.now(),
+    statusDate:   Date.now(),
+  };
+  await addDoc(collection(db,'orders'), o);
+  closeModal('new-order-modal');
+  toast('Commande créée ✓');
+  renderOrders();
+};
+
+window.updateOrderStatus = async function(id, status) {
+  await updateDoc(doc(db,'orders',id), { status, statusDate: Date.now() });
+  toast(`Statut mis à jour ✓`);
+};
+
+window.updateOrderTracking = async function(id, tracking) {
+  if(!tracking) return;
+  await updateDoc(doc(db,'orders',id), { trackingNumber: tracking });
+  toast('Numéro de suivi sauvegardé ✓');
+};
+
+window.deleteOrder = async function(id) {
+  if(!confirm('Supprimer cette commande ?')) return;
+  await deleteDoc(doc(db,'orders',id));
+  toast('Commande supprimée');
+  renderOrders();
+};
 window.saveCustom = async function() {
   const val=document.getElementById('custom-inp').value.trim(); if(!val) return;
   const ctx=customCtx, sec=DEFS.find(s=>s.id===ctx.sid);
@@ -509,7 +619,11 @@ window.setSection  = function(s){
 window.setBrand    = b=>{activeBrand=b;activeModel=null;searchQ='';render();}
 window.setModel    = m=>{activeModel=m;searchQ='';render();}
 window.goBack      = ()=>{if(activeModel)activeModel=null;else if(activeBrand)activeBrand=null;render();}
-window.setView     = v=>{activeView=v;if(v==='catalogue')render();if(v==='settings')renderSettings();
+window.setView = v=>{
+  activeView=v;
+  if(v==='catalogue') render();
+  if(v==='settings') renderSettings();
+  if(v==='orders') renderOrders();
   document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
 }
 
@@ -1194,6 +1308,23 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .empty-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--text);margin-bottom:8px}
 .empty-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
 
+/* ── ORDERS ── */
+.orders-list{display:flex;flex-direction:column;gap:12px}
+.order-card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r);padding:16px;transition:border-color .14s}
+.order-card:hover{border-color:var(--gb)}
+.order-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.order-client{font-size:14px;font-weight:600;color:var(--text)}
+.order-email{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-top:2px}
+.order-date{font-size:11px;color:var(--text3);margin-top:4px}
+.order-total{font-size:16px;font-weight:700;color:var(--gold2);font-family:'Playfair Display',serif;margin-bottom:4px}
+.order-status-badge{display:inline-block;font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.05em}
+.order-items{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.order-item-tag{background:var(--bg3);border:1px solid var(--line2);border-radius:4px;padding:2px 8px;font-size:11px;color:var(--text2)}
+.order-tracking{font-size:12px;color:var(--text2);margin-bottom:10px;padding:6px 10px;background:var(--bg3);border-radius:var(--r-sm);border:1px solid var(--line2)}
+.order-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.order-status-select{flex:1;min-width:120px;padding:6px 8px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text2);font-size:11px;font-family:'Inter',sans-serif;outline:none;cursor:pointer}
+.order-tracking-inp{flex:2;min-width:140px;padding:6px 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--bg3);color:var(--text);font-size:12px;font-family:'JetBrains Mono',monospace;outline:none}
+.order-tracking-inp::placeholder{color:var(--text3)}
 /* ── SETTINGS ── */
 .settings-page{width:100%}
 .settings-title{font-family:'Playfair Display',serif;font-size:24px;margin-bottom:8px}
@@ -1464,6 +1595,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
     <div class="hdr-sp"></div>
     <div class="hdr-btns">
       <button class="view-btn active" data-view="catalogue" onclick="setView('catalogue')">📦 Catalogue</button>
+      <button class="view-btn" data-view="orders" onclick="setView('orders')">🛒 Commandes</button>
       <button class="view-btn" data-view="settings" onclick="setView('settings')">⚙️ Paramètres</button>
       <button class="btn-sb" id="theme-btn" onclick="toggleTheme()" title="Mode clair/sombre">☀</button>
       <button class="btn-sb" onclick="exportJSON()">↓ Export</button>
@@ -1603,6 +1735,11 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 <!-- DETAIL MODAL -->
 <div class="overlay hidden" id="detail-modal">
   <div class="modal detail-modal"><div id="detail-body"></div></div>
+</div>
+
+<!-- NEW ORDER MODAL -->
+<div class="overlay hidden" id="new-order-modal">
+  <div class="modal" style="max-width:440px"><div class="modal-inner"></div></div>
 </div>
 
 <!-- CUSTOM MODAL -->
