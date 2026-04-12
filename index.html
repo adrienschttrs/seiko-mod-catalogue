@@ -149,7 +149,9 @@ window.savePart = async function() {
     notes:    document.getElementById('f-notes').value||'',
     stock:    document.getElementById('f-stock').value||'stock',
     lastPiece: document.getElementById('f-last-piece')?.checked||false,
-    img:currentImgUrl||'', ts:Date.now()
+    img:currentImgs[0]||'',
+    imgs:currentImgs,
+    ts:Date.now()
   };
   try{
     setSaveBtn(true);
@@ -443,24 +445,57 @@ window.deleteModelTag = async function(tag){
 };
 
 // ─── IMAGE ────────────────────────────────────────────────────────────────────
-window.handleImg = async function(input) {
-  const file=input.files[0]; if(!file) return;
-  uploadingImg=true; setImgLoading(true);
-  try{
-    currentImgUrl=await uploadToCloudinary(file);
-    document.getElementById('img-prev').src=currentImgUrl;
-    document.getElementById('img-prev').style.display='block';
-    document.getElementById('img-ph').style.display='none';
-    document.getElementById('img-zone').classList.add('filled');
-    toast('Photo uploadée ✓');
-  }catch(e){toast('Erreur upload',true);}
-  finally{uploadingImg=false;setImgLoading(false);}
-};
-function setImgLoading(on){
-  document.getElementById('img-ph').innerHTML=on
-    ?'<div class="spinner"></div><div class="img-hint">Upload…</div>'
-    :'<svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--text3)"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg><div class="img-hint">Cliquer pour ajouter</div>';
+// ─── MULTI-PHOTO ──────────────────────────────────────────────────────────────
+let currentImgs = []; // array of URLs, first = main
+
+function renderImgGallery() {
+  const zone = document.getElementById('img-gallery-zone'); if(!zone) return;
+  zone.innerHTML = currentImgs.map((url, i) => `
+    <div class="img-thumb-item" data-i="${i}">
+      <img src="${url}" alt="">
+      ${i===0 ? '<span class="img-thumb-main">Principal</span>' : ''}
+      <button class="img-thumb-del" onclick="removeImg(${i})" title="Supprimer">✕</button>
+      ${i>0 ? `<button class="img-thumb-left" onclick="moveImgLeft(${i})" title="Déplacer à gauche">‹</button>` : ''}
+    </div>`).join('') +
+    (currentImgs.length < 6 ? `
+    <div class="img-add-btn" onclick="document.getElementById('img-file').click()">
+      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg>
+      <span>Ajouter</span>
+    </div>` : '');
 }
+
+window.handleImg = async function(input) {
+  const files = Array.from(input.files); if(!files.length) return;
+  if(uploadingImg){toast('Upload en cours…',true);return;}
+  uploadingImg = true;
+  const addBtn = document.querySelector('.img-add-btn');
+  if(addBtn) addBtn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px"></div><span>Upload…</span>';
+  try {
+    for(const file of files) {
+      if(currentImgs.length >= 6) break;
+      const url = await uploadToCloudinary(file);
+      currentImgs.push(url);
+    }
+    // Keep backward compat: currentImgUrl = first image
+    currentImgUrl = currentImgs[0] || null;
+    renderImgGallery();
+    toast(`${files.length > 1 ? files.length + ' photos uploadées' : 'Photo uploadée'} ✓`);
+  } catch(e) { toast('Erreur upload', true); }
+  finally { uploadingImg = false; input.value = ''; }
+};
+
+window.removeImg = function(i) {
+  currentImgs.splice(i, 1);
+  currentImgUrl = currentImgs[0] || null;
+  renderImgGallery();
+};
+
+window.moveImgLeft = function(i) {
+  if(i <= 0) return;
+  [currentImgs[i-1], currentImgs[i]] = [currentImgs[i], currentImgs[i-1]];
+  currentImgUrl = currentImgs[0] || null;
+  renderImgGallery();
+};
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 window.setSection  = function(s){
@@ -714,7 +749,7 @@ function renderSettings(){
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 window.openAddPart = function(sid,brand,model){
-  editingId=null; addCtx={sid,brand,model}; currentImgUrl=null;
+  editingId=null; addCtx={sid,brand,model}; currentImgUrl=null; currentImgs=[];
   const sec=DEFS.find(s=>s.id===sid);
   const isComplete=sid==='complete';
   const hasSizes=sec?.hasSizes||false;
@@ -758,6 +793,7 @@ window.openEditPart = function(id){
   const p=parts.find(x=>x.id===id); if(!p) return;
   closeModal('detail-modal');
   editingId=id; addCtx={sid:p.sid,brand:p.brand,model:p.model}; currentImgUrl=p.img||null;
+  currentImgs = p.imgs?.length ? [...p.imgs] : (p.img ? [p.img] : []);
   const sec=DEFS.find(s=>s.id===p.sid);
   const isComplete=p.sid==='complete';
   const hasSizes=sec?.hasSizes||false;
@@ -786,8 +822,7 @@ window.openEditPart = function(id){
   document.getElementById('variants-section').style.display=isComplete?'block':'none';
   document.getElementById('simple-link-section').style.display=isComplete?'none':'block';
   if(isComplete) renderVariants(p.variants&&p.variants.length ? p.variants : [{name:'',link:''}]);
-  if(p.img){document.getElementById('img-prev').src=p.img;document.getElementById('img-prev').style.display='block';document.getElementById('img-ph').style.display='none';document.getElementById('img-zone').classList.add('filled');}
-  else resetImg();
+  renderImgGallery();
   openModal('add-modal');
   if(isComplete){
     // Reset valeurs par défaut et recalcule
@@ -922,7 +957,7 @@ function esc(s){return(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function openModal(id){document.getElementById(id).classList.remove('hidden');}
 function closeModal(id){document.getElementById(id).classList.add('hidden');}
 window.closeModal=closeModal;
-function resetImg(){currentImgUrl=null;document.getElementById('img-prev').style.display='none';setImgLoading(false);document.getElementById('img-zone').classList.remove('filled');document.getElementById('img-file').value='';}
+function resetImg(){currentImgUrl=null;currentImgs=[];renderImgGallery();document.getElementById('img-file').value='';}
 function setSaveBtn(on){const b=document.getElementById('save-btn');b.textContent=on?'Enregistrement…':'Enregistrer';b.disabled=on;}
 let _tt;
 window.toast=function(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(err?'err':'ok');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),2600);}
@@ -1254,6 +1289,15 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .form-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .ctx-pill{display:inline-flex;background:var(--gg);border:1px solid var(--gb);border-radius:4px;padding:5px 11px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold2);margin-bottom:14px;letter-spacing:.06em;line-height:1.5}
 .img-zone{border:1px dashed var(--line2);border-radius:var(--r);padding:14px;text-align:center;cursor:pointer;transition:all .14s;background:var(--bg3);min-height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px}
+.img-gallery-zone{display:flex;flex-wrap:wrap;gap:8px;min-height:80px;align-items:flex-start}
+.img-thumb-item{position:relative;width:80px;height:80px;border-radius:var(--r-sm);overflow:visible;flex-shrink:0}
+.img-thumb-item img{width:80px;height:80px;object-fit:cover;border-radius:var(--r-sm);border:2px solid var(--line2)}
+.img-thumb-item:first-child img{border-color:var(--gold2)}
+.img-thumb-main{position:absolute;bottom:-16px;left:0;right:0;text-align:center;font-size:8px;color:var(--gold2);font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.img-thumb-del{position:absolute;top:-6px;right:-6px;width:18px;height:18px;background:#c04040;color:#fff;border:none;border-radius:50%;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
+.img-thumb-left{position:absolute;top:-6px;left:-6px;width:18px;height:18px;background:var(--bg3);color:var(--text2);border:1px solid var(--line2);border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0}
+.img-add-btn{width:80px;height:80px;border:1px dashed var(--line2);border-radius:var(--r-sm);background:var(--bg3);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--text3);font-size:9px;font-family:'JetBrains Mono',monospace;transition:all .14s}
+.img-add-btn:hover{border-color:var(--gold2);color:var(--gold2)}
 .img-zone:hover{border-color:var(--gb);background:var(--gg)}
 .img-zone.filled{border-style:solid;border-color:var(--line2)}
 .img-zone img{max-width:100%;max-height:108px;border-radius:var(--r-sm)}
@@ -1452,15 +1496,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
       <div class="ctx-pill" id="add-ctx"></div>
 
       <div class="fg">
-        <label>Photo</label>
-        <div class="img-zone" id="img-zone" onclick="document.getElementById('img-file').click()">
-          <div id="img-ph">
-            <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="color:var(--text3)"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9l3-3h3l2-2h2l2 2h3l3 3"/></svg>
-            <div class="img-hint">Cliquer pour ajouter</div>
-          </div>
-          <img id="img-prev" style="display:none">
-          <input type="file" id="img-file" accept="image/*" style="display:none" onchange="handleImg(this)">
-        </div>
+        <label>Photos <span style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace">(max 6 — la première est la photo principale)</span></label>
+        <div class="img-gallery-zone" id="img-gallery-zone"></div>
+        <input type="file" id="img-file" accept="image/*" multiple style="display:none" onchange="handleImg(this)">
       </div>
 
       <div class="fg"><label>Nom *</label><input type="text" id="f-name" placeholder="ex: Bracelet Jubilée 20mm"></div>
