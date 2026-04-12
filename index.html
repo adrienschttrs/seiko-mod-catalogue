@@ -322,11 +322,27 @@ window.deleteBrand = async function(sid,brand) {
 };
 
 // ─── FINANCES ─────────────────────────────────────────────────────────────────
-let finPeriod = 'all'; // 'all' | '30' | '90' | '365' | 'month' | 'year'
+let finPeriod = 'all';
+let finCustomFrom = null;
+let finCustomTo = null;
 
 window.setFinPeriod = function(p) {
   finPeriod = p;
+  finCustomFrom = null;
+  finCustomTo = null;
   document.querySelectorAll('.fin-period-btn').forEach(b => b.classList.toggle('active', b.dataset.p===p));
+  // Show/hide calendar
+  const cal = document.getElementById('fin-calendar');
+  if(cal) cal.style.display = p==='custom' ? 'flex' : 'none';
+  if(p!=='custom') renderFinancesData();
+};
+
+window.applyCustomPeriod = function() {
+  const from = document.getElementById('fin-from').value;
+  const to   = document.getElementById('fin-to').value;
+  if(!from||!to) return;
+  finCustomFrom = new Date(from).setHours(0,0,0,0);
+  finCustomTo   = new Date(to).setHours(23,59,59,999);
   renderFinancesData();
 };
 
@@ -341,15 +357,32 @@ async function renderFinances() {
     window._finOrders = ordersSnap.docs.map(d=>({id:d.id,...d.data()}));
     window._finParts  = partsSnap.docs.map(d=>({id:d.id,...d.data()}));
 
+    const now = new Date();
+    const thisMonth = now.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const defaultTo   = now.toISOString().split('T')[0];
+
     main.innerHTML = `
       <div class="fin-header">
         <div class="level-title">Finances</div>
-        <div class="fin-period-bar">
-          <button class="fin-period-btn active" data-p="all"    onclick="setFinPeriod('all')">Tout</button>
-          <button class="fin-period-btn"         data-p="year"  onclick="setFinPeriod('year')">Cette année</button>
-          <button class="fin-period-btn"         data-p="month" onclick="setFinPeriod('month')">Ce mois</button>
-          <button class="fin-period-btn"         data-p="90"    onclick="setFinPeriod('90')">90 jours</button>
-          <button class="fin-period-btn"         data-p="30"    onclick="setFinPeriod('30')">30 jours</button>
+        <div class="fin-controls">
+          <div class="fin-period-bar">
+            <button class="fin-period-btn active" data-p="all"    onclick="setFinPeriod('all')">Tout</button>
+            <button class="fin-period-btn"         data-p="year"  onclick="setFinPeriod('year')">Cette année</button>
+            <button class="fin-period-btn"         data-p="month" onclick="setFinPeriod('month')">Ce mois</button>
+            <button class="fin-period-btn"         data-p="90"    onclick="setFinPeriod('90')">90 jours</button>
+            <button class="fin-period-btn"         data-p="30"    onclick="setFinPeriod('30')">30 jours</button>
+            <button class="fin-period-btn"         data-p="custom" onclick="setFinPeriod('custom')">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Période
+            </button>
+          </div>
+          <div class="fin-calendar" id="fin-calendar" style="display:none">
+            <input type="date" id="fin-from" class="fin-date-inp" value="${defaultFrom}">
+            <span style="color:var(--text3);font-size:11px">→</span>
+            <input type="date" id="fin-to" class="fin-date-inp" value="${defaultTo}">
+            <button class="btn-gold" style="padding:5px 12px;font-size:10px" onclick="applyCustomPeriod()">Appliquer</button>
+          </div>
         </div>
       </div>
       <div id="fin-body"></div>`;
@@ -362,11 +395,20 @@ async function renderFinances() {
 function filterByPeriod(orders) {
   const now = Date.now();
   const d = new Date();
-  if(finPeriod==='30')    return orders.filter(o=>o.ts && now-o.ts <= 30*864e5);
-  if(finPeriod==='90')    return orders.filter(o=>o.ts && now-o.ts <= 90*864e5);
-  if(finPeriod==='365')   return orders.filter(o=>o.ts && now-o.ts <= 365*864e5);
-  if(finPeriod==='month') return orders.filter(o=>{if(!o.ts)return false;const x=new Date(o.ts);return x.getFullYear()===d.getFullYear()&&x.getMonth()===d.getMonth();});
-  if(finPeriod==='year')  return orders.filter(o=>{if(!o.ts)return false;return new Date(o.ts).getFullYear()===d.getFullYear();});
+  if(finPeriod==='custom' && finCustomFrom && finCustomTo)
+    return orders.filter(o=>o.ts && o.ts>=finCustomFrom && o.ts<=finCustomTo);
+  if(finPeriod==='30')
+    return orders.filter(o=>o.ts && now-o.ts <= 30*864e5);
+  if(finPeriod==='90')
+    return orders.filter(o=>o.ts && now-o.ts <= 90*864e5);
+  if(finPeriod==='month') // mois calendaire actuel
+    return orders.filter(o=>{
+      if(!o.ts) return false;
+      const x=new Date(o.ts);
+      return x.getFullYear()===d.getFullYear() && x.getMonth()===d.getMonth();
+    });
+  if(finPeriod==='year')
+    return orders.filter(o=>{if(!o.ts)return false;return new Date(o.ts).getFullYear()===d.getFullYear();});
   return orders; // 'all'
 }
 
@@ -467,7 +509,15 @@ function renderFinancesData() {
     <div class="fin-grid">
       <!-- Graphique revenus -->
       <div class="fin-card fin-card-wide">
-        <div class="fin-card-title">Revenus — ${finPeriod==='30'||finPeriod==='month'?'30 derniers jours':finPeriod==='90'?'3 derniers mois':finPeriod==='year'?'Cette année':'12 derniers mois'}</div>
+        <div class="fin-card-title">Revenus — ${
+          finPeriod==='custom' && finCustomFrom && finCustomTo
+            ? new Date(finCustomFrom).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' → '+new Date(finCustomTo).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+            : finPeriod==='30'?'30 derniers jours'
+            : finPeriod==='month'?new Date().toLocaleDateString('fr-FR',{month:'long',year:'numeric'})
+            : finPeriod==='90'?'3 derniers mois'
+            : finPeriod==='year'?'Cette année'
+            :'12 derniers mois'
+        }</div>
         <div class="fin-chart">
           ${chartBuckets.map(m=>`
             <div class="fin-bar-wrap" title="${m.label} : ${m.val.toFixed(2)}€">
@@ -1556,7 +1606,10 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);heigh
 .empty-sub{font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6}
 
 /* ── FINANCES ── */
-.fin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.fin-controls{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.fin-calendar{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);padding:6px 10px}
+.fin-date-inp{padding:4px 8px;border:1px solid var(--line2);border-radius:4px;background:var(--bg2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;cursor:pointer}
+.fin-date-inp:focus{border-color:var(--gold2)}
 .fin-period-bar{display:flex;gap:4px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:3px}
 .fin-period-btn{padding:5px 12px;border:none;border-radius:4px;background:transparent;color:var(--text3);font-size:10px;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:all .14s;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
 .fin-period-btn:hover{color:var(--text);background:var(--bg2)}
